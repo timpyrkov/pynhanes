@@ -47,7 +47,7 @@ NHANES Parser lib offers tool to get data in Pandas and NumPy:
 
 5) `parse_activity.ipynb` converts 2003-2006 and 2011-2014 accelerometry data to NumPy arrays (default: save data in `NPZ` subfolder)
 
-6) `load_and_plot.ipynb` shows han example ow to load and hadle parsed data
+6) `load_and_plot.ipynb` shows an example how to load and hadle parsed data
 
 # 
 
