@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import operator
 import json
-from jsoncomment import JsonComment
+import jsoncomment
 
 
 
@@ -25,7 +25,7 @@ def load_variables(path):
         Dictionary {human-readable name -> list of NHNAES codes}
 
     """
-    parser = JsonComment(json)
+    parser = jsoncomment.JsonComment(json)
     f = open(os.path.expanduser(path))
     dct = parser.load(f)
     f.close()
@@ -138,7 +138,7 @@ class NhanesLoader():
         Parameters
         ----------
         no_flat : bool, default True
-            If True, cnahge flat regions and outliers to zero
+            If True, change flat regions and outliers to zero
 
         Returns
         -------
@@ -397,3 +397,4 @@ import types
 __all__ = [name for name, thing in globals().items()
           if not (name.startswith('_') or isinstance(thing, types.ModuleType))]
 del types
+

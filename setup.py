@@ -7,7 +7,7 @@ def read(fname):
 
 setup(
     name="pynhanes",
-    version="0.0.2",
+    version="0.0.4",
     author="Tim Pyrkov",
     author_email="tim.pyrkov@gmail.com",
     description="Python parser and scraper for NHANES accelerometry and questionnaire",
@@ -15,7 +15,7 @@ setup(
     license = "MIT License",
     long_description_content_type="text/markdown",
     url="https://github.com/timpyrkov/pynhanes",
-    # packages=find_packages(exclude=("docs")),
+    packages=find_packages(exclude=("docs")),
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
