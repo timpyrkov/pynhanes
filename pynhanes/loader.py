@@ -271,13 +271,14 @@ class CodeBook():
     ----------
     path_csv : str, default '~/work/NHANES/CSV/nhanes_userdata.csv'
         Path to user data csv file
-    variables : str, dict, or None, default None
-        Path to human-readable names .json file, e.g. '~/work/NHANES/CSV/nhanes_variables.json',
-        or explicit dictiontionary of human-readable varable names
+    variables : str or dict, default '~/work/NHANES/CSV/nhanes_variables.json'
+        Path to human-readable names .json file, or explicit 
+        dictiontionary of human-readable varable names
 
     """
 
-    def __init__(self, path_csv="~/work/NHANES/CSV/nhanes_codebook.csv", variables=None):
+    def __init__(self, path_csv="~/work/NHANES/CSV/nhanes_codebook.csv", 
+                       variables="~/work/NHANES/CSV/nhanes_variables.json"):
         self._load_codebook(path_csv)
         self._load_variables(variables)
 
@@ -334,17 +335,17 @@ class CodeBook():
 
         Parameters
         ----------
-        path : str
-            Path to variables csv, e.g. '~/work/NHANES/CSV/nhanes_variables.csv'
+        variables : str or dict
+            Path to human-readable names .json file, or explicit 
+            dictiontionary of human-readable varable names
 
         """
         dct = {}
-        if variables is not None:
-            if isinstance(variables, dict):
-                dct.update(variables)
-            else:
-                dct = load_variables(variables)
-                dct = dct["code"].to_dict()
+        if isinstance(variables, dict):
+            dct.update(variables)
+        elif os.path.exists(os.path.expanduser(variables)):
+            dct = load_variables(variables)
+            # dct = dct["code"].to_dict()
             for key, val in dct.items():
                 dct[key] = self._codebook[val[0]]
                 # Fix dictionary for 'Smoking status' (combined field SMQ020/SMQ040)
