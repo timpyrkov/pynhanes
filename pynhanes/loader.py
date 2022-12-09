@@ -64,7 +64,6 @@ class NhanesLoader():
         print('NUSERS', len(self.userid))
 
 
-    @property
     def userid(self):
         """
         Get user ids.
@@ -78,7 +77,6 @@ class NhanesLoader():
         return np.copy(self._userid)
 
 
-    @property
     def survey(self):
         """
         Get user survey years.
@@ -92,7 +90,6 @@ class NhanesLoader():
         return np.copy(self._survey)
 
 
-    @property
     def categories(self):
         """
         Get list of loaded userdata categories.
@@ -131,14 +128,17 @@ class NhanesLoader():
         return cols
     
 
-    def x(self, no_flat=True):
+    def x(self, binarize=None, remove_outliers=True):
         """
         Get array of physical activity.
 
         Parameters
         ----------
-        no_flat : bool, default True
-            If True, change flat regions and outliers to zero
+        binarize : tuple or None, default None
+            None or tuple of size two with binarization cutoffs 
+            for 2003-2006 and 2011-2014 cohorts, e.g (3.0, 3.5)
+        remove_outliers : bool, default True
+            If True, change flat oulier (> 32000) regions to zero
 
         Returns
         -------
@@ -147,10 +147,16 @@ class NhanesLoader():
         
         """
         x_ = np.copy(self._x)
-        if no_flat:
+        if remove_outliers:
             d = np.diff(x_, axis=1, append=x_[:,:1])
             mask = (x_ > 32000) & (d==0)
             x_[mask] = 0
+        if binarize is not None:
+            x_ = np.log2(x+1)
+            x_ = np.vstack([
+                (x_[self.survey() < 2010] >= binarize[0]).astype(float),
+                (x_[self.survey() > 2010] >= binarize[1]).astype(float),
+            ])
         return x_
 
 
