@@ -61,7 +61,7 @@ class NhanesLoader():
         self._survey = np.array([2003] * len(userid1) + [2011] * len(userid2))
         self._x = np.vstack([xnpz1["counts"], xnpz2["triax"]]).astype(float)
         self._categ = np.vstack([np.zeros_like(xnpz1["counts"], np.int8), xnpz2["categ"]]).astype(np.int8)
-        print('NUSERS', len(self.userid))
+        print('NUSERS', len(self.userid()))
 
 
     def userid(self):
@@ -186,7 +186,7 @@ class NhanesLoader():
 
         """
         if userid is None:
-            userid = self.userid
+            userid = self.userid()
         val = np.zeros((len(userid))) * np.nan
         categ = np.array(self._df.columns.to_list()).T
         categ = dict(zip(categ[1], categ[0]))
