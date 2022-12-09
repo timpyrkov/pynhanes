@@ -152,7 +152,7 @@ class NhanesLoader():
             mask = (x_ > 32000) & (d==0)
             x_[mask] = 0
         if binarize is not None:
-            x_ = np.log2(x+1)
+            x_ = np.log2(x_+1)
             x_ = np.vstack([
                 (x_[self.survey() < 2010] >= binarize[0]).astype(float),
                 (x_[self.survey() > 2010] >= binarize[1]).astype(float),
