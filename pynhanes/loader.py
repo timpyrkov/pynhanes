@@ -126,11 +126,12 @@ class NhanesLoader():
         
         """
         assert isinstance(cutoff, int) or len(cutoff) == 2
+        cutoff = cutoff if len(cutoff) == 2 else (cutoff,) * 2
         x_ = self.x
         x_ = np.log2(x_+1)
         x_ = np.vstack([
-            (x_[self.survey < 2010] >= binarize[0]).astype(float),
-            (x_[self.survey > 2010] >= binarize[1]).astype(float),
+            (x_[self.survey < 2010] >= cutoff[0]).astype(float),
+            (x_[self.survey > 2010] >= cutoff[1]).astype(float),
         ])
         return x_
 
