@@ -61,9 +61,10 @@ class NhanesLoader():
         self._survey = np.array([2003] * len(userid1) + [2011] * len(userid2))
         self._x = np.vstack([xnpz1["counts"], xnpz2["triax"]]).astype(float)
         self._categ = np.vstack([np.zeros_like(xnpz1["counts"], np.int8), xnpz2["categ"]]).astype(np.int8)
-        print('NUSERS', len(self.userid()))
+        print('NUSERS', len(self.userid))
 
 
+    @property
     def userid(self):
         """
         Get user ids.
@@ -77,6 +78,7 @@ class NhanesLoader():
         return np.copy(self._userid)
 
 
+    @property
     def survey(self):
         """
         Get user survey years.
@@ -88,6 +90,49 @@ class NhanesLoader():
         
         """
         return np.copy(self._survey)
+
+
+    @property
+    def x(self, binarize=None, remove_outliers=True):
+        """
+        Get array of physical activity.
+
+        Returns
+        -------
+        ndarray
+            2D array of size N samples x 10080 minutes
+        
+        """
+        x_ = np.copy(self._x)
+        d = np.diff(x_, axis=1, append=x_[:,:1])
+        mask = (x_ > 32000) & (d==0)
+        x_[mask] = 0
+        return x_
+
+
+    def xbinned(self, cutoff=(3.0, 3.5)):
+        """
+        Get binarized array of physical activity.
+
+        Parameters
+        ----------
+        cutoff : int or tuple, default (3.0, 3.5)
+            Cutoff or separate cutoffs for 2003-2006 and 2011-2014 cohorts
+
+        Returns
+        -------
+        ndarray
+            2D array of size N samples x 10080 minutes
+        
+        """
+        assert isinstance(cutoff, int) or len(cutoff) == 2
+        x_ = self.x
+        x_ = np.log2(x_+1)
+        x_ = np.vstack([
+            (x_[self.survey < 2010] >= binarize[0]).astype(float),
+            (x_[self.survey > 2010] >= binarize[1]).astype(float),
+        ])
+        return x_
 
 
     def categories(self):
@@ -128,38 +173,6 @@ class NhanesLoader():
         return cols
     
 
-    def x(self, binarize=None, remove_outliers=True):
-        """
-        Get array of physical activity.
-
-        Parameters
-        ----------
-        binarize : tuple or None, default None
-            None or tuple of size two with binarization cutoffs 
-            for 2003-2006 and 2011-2014 cohorts, e.g (3.0, 3.5)
-        remove_outliers : bool, default True
-            If True, change flat oulier (> 32000) regions to zero
-
-        Returns
-        -------
-        ndarray
-            2D array of size N samples x 10080 minutes
-        
-        """
-        x_ = np.copy(self._x)
-        if remove_outliers:
-            d = np.diff(x_, axis=1, append=x_[:,:1])
-            mask = (x_ > 32000) & (d==0)
-            x_[mask] = 0
-        if binarize is not None:
-            x_ = np.log2(x_+1)
-            x_ = np.vstack([
-                (x_[self.survey() < 2010] >= binarize[0]).astype(float),
-                (x_[self.survey() > 2010] >= binarize[1]).astype(float),
-            ])
-        return x_
-
-
     def userdata(self, field, cond=None, userid=None):
         """
         Get values of userdata (for selected user ids)
@@ -186,7 +199,7 @@ class NhanesLoader():
 
         """
         if userid is None:
-            userid = self.userid()
+            userid = self.userid
         val = np.zeros((len(userid))) * np.nan
         categ = np.array(self._df.columns.to_list()).T
         categ = dict(zip(categ[1], categ[0]))
@@ -345,7 +358,6 @@ class CodeBook():
             dct.update(variables)
         elif os.path.exists(os.path.expanduser(variables)):
             dct = load_variables(variables)
-            # dct = dct["code"].to_dict()
             for key, val in dct.items():
                 dct[key] = self._codebook[val[0]]
                 # Fix dictionary for 'Smoking status' (combined field SMQ020/SMQ040)
