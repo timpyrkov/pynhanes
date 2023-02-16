@@ -41,7 +41,7 @@ def age_avg_std(x, age, window=1, nmin=1):
     window : int, default 1
         Aberaging window, yr
     nmin : int, default 1
-        Min num of samples inside window to output a data point, or NaN
+        Num of samples inside window should be greater than nmin, else NaN
 
     Returns
     -------
@@ -61,7 +61,7 @@ def age_avg_std(x, age, window=1, nmin=1):
         age_min = i - window // 2
         age_max = i + window // 2 + 1
         mask = (age >= age_min) & (age < age_max) & np.isfinite(x)
-        if np.sum(mask) >= nmin:
+        if np.sum(mask) > nmin:
             xavg[i] = np.mean(x[mask])
             xstd[i] = np.std(x[mask])
     return t, xavg, xstd
@@ -82,7 +82,7 @@ def age_fraction(x, age, window=1, val=1, nmin=0):
     val : int, default 1
         Specify fraction of which value to calculate
     nmin : int, default 1
-        Min num of samples inside window to output a data point, or NaN
+        Num of samples inside window should be greater than nmin, else NaN
 
     Returns
     -------
@@ -122,7 +122,7 @@ def age_gender_dict(x, age, gender=None, window=1, nmin=0):
     window : int, default 1
         Aberaging window, yr
     nmin : int, default 1
-        Min num of samples inside window to output a data point, or NaN
+        Num of samples inside window should be greater than nmin, else NaN
 
     Returns
     -------
@@ -164,7 +164,7 @@ def age_detrending(x, age, gender=None, dct=None, window=1, nmin=0):
     window : int, default 1
         Aberaging window, yr
     nmin : int, default 1
-        Min num of samples inside window to output a data point, or NaN
+        Num of samples inside window should be greater than nmin, else NaN
 
     Returns
     -------
@@ -198,7 +198,7 @@ def plot_age_avg_std(x, age, window=1, nmin=1, color=None, label='', ax=None):
     window : int, default 1
         Aberaging window, yr
     nmin : int, default 1
-        Min num of samples inside window to output a data point, or NaN
+        Num of samples inside window should be greater than nmin, else NaN
     color : str or None
         Matplotlib color for plotted line
     label : str
@@ -236,7 +236,7 @@ def plot_age_fraction(x, age, window=1, nmin=0, cmap="jet", labels=None, ax=None
     window : int, default 1
         Aberaging window, yr
     nmin : int, default 1
-        Min num of samples inside window to output a data point, or NaN
+        Num of samples inside window should be greater than nmin, else NaN
     cmap : str, default 'jet'
         Matplotlib color map to color fraction of each value
     labels : dict, or None, default None

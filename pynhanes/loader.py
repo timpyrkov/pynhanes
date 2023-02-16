@@ -93,7 +93,7 @@ class NhanesLoader():
 
 
     @property
-    def x(self, binarize=None, remove_outliers=True):
+    def x(self):
         """
         Get array of physical activity.
 
@@ -130,8 +130,8 @@ class NhanesLoader():
         x_ = self.x
         x_ = np.log2(x_+1)
         x_ = np.vstack([
-            (x_[self.survey < 2010] >= cutoff[0]).astype(float),
-            (x_[self.survey > 2010] >= cutoff[1]).astype(float),
+            (x_[self.survey < 2010] > cutoff[0]).astype(float),
+            (x_[self.survey > 2010] > cutoff[1]).astype(float),
         ])
         return x_
 
