@@ -3,6 +3,7 @@
 
 import numpy as np
 import pylab as plt
+from scipy import stats
 
 
 def age_cohorts(age, dt=10):
@@ -187,7 +188,7 @@ def age_detrending(x, age, gender=None, dct=None, window=1, nmin=0):
 
 def plot_age_avg_std(x, age, window=1, nmin=1, color=None, label='', ax=None):
     """
-    Plot x avg and std for 0 - 100 years
+    Plot x avg +/- std for 0 - 100 years
 
     Parameters
     ----------
@@ -222,10 +223,9 @@ def plot_age_avg_std(x, age, window=1, nmin=1, color=None, label='', ax=None):
     return ax
 
 
-def plot_age_fraction(x, age, window=1, nmin=0, cmap="jet", labels=None, ax=None):
+def plot_age_fraction(x, age, window=1, nmin=0, cmap="jet", labels=None, nbin=5, ax=None):
     """
     Plot x == val fractions for 0 - 100 years
-    Plot x avg and std for 0 - 100 years
 
     Parameters
     ----------
@@ -241,6 +241,8 @@ def plot_age_fraction(x, age, window=1, nmin=0, cmap="jet", labels=None, ax=None
         Matplotlib color map to color fraction of each value
     labels : dict, or None, default None
         Matplotlib text label for plotted line
+    nbin : int, default 5
+        Number of bins (groups); Only applicable when n categories > 15
     ax : matplotlib.pyplot.Axes object, default None
         Axes for plotting
 
@@ -253,6 +255,9 @@ def plot_age_fraction(x, age, window=1, nmin=0, cmap="jet", labels=None, ax=None
     if ax is None:
         ax = plt.gca()
     values = np.unique(x[np.isfinite(x)])[::-1]
+    if len(values) > 15:
+        x, labels = digitize(x, nbin)
+        values = np.unique(x[np.isfinite(x)])[::-1]
     n = len(values)
     cmap = plt.get_cmap(cmap)
     colors = cmap(np.linspace(0, 1, n+2))[1:-1]
@@ -272,6 +277,65 @@ def plot_age_fraction(x, age, window=1, nmin=0, cmap="jet", labels=None, ax=None
     return ax
 
 
+def digitize(x, nbin=5):
+    """
+    Digitize a continuous-range data into categorical
+    with approximately equal size groups
+
+    Parameters
+    ----------
+    x : ndarray
+        1D array of length N samples
+    nbin : int, default 5
+        Number of bins (groups)
+
+    Returns
+    -------
+    xbinned : ndarray
+        Categorical id
+    dct : dict
+        Dictionary: id -> range of values
+
+    """
+    mask = np.isfinite(x)
+    bins = np.arange(nbin + 1) / float(nbin)
+    q = np.quantile(x[mask], bins)
+    xbinned = np.digitize(x, q[1:-1])
+    dct = {i: f"{q[i]:.1f}-{q[i+1]:.1f}" for i in range(len(q) - 1)}
+    return xbinned, dct
+
+
+def pvalue(x, y, n=100, niter=100):
+    """
+    Calculate log-averaged pvalue
+
+    Parameters
+    ----------
+    x, y : ndarray
+        Two arrays of measurements, sample sizes can be different
+    n : int, default 100
+        Number of samples to draw each time from each distribution
+    niter : int, default 100
+        Number of interation to randomly draw samples from each distribution
+
+    Returns
+    -------
+    p : float
+        Log-averaged p-value
+
+    """
+    p = []
+    for i in range(niter):
+        x_ = np.random.choice(x, n)
+        y_ = np.random.choice(y, n)
+        try:
+            _, p_ = stats.ks_2samp(x_, y_)
+        except:
+            p_ = 1.0
+        p.append(p_)
+    p = np.array(p)
+    p = np.exp(np.mean(np.log(p)))
+    return p
 
 
 import types
