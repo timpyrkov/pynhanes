@@ -7,7 +7,7 @@ def read(fname):
 
 setup(
     name="pynhanes",
-    version="0.0.12",
+    version="0.0.16",
     author="Tim Pyrkov",
     author_email="tim.pyrkov@gmail.com",
     description="Python parser and scraper for NHANES accelerometry and questionnaire",
@@ -26,8 +26,10 @@ setup(
     install_requires=[
         "jsoncomment",
         "numpy",
-        "scipy"
+        "scipy",
         "matplotlib",
+        "seaborn",
+        "statannotations",
         "pandas",
         "requests",
         "tqdm"

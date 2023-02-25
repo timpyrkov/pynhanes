@@ -46,21 +46,31 @@ class NhanesLoader():
     ----------
     path_csv : str, default '~/work/NHANES/CSV/nhanes_userdata.csv'
         Path to user data csv file
-    path_npz : str, default '~/work/NHANES/NPZ/'
+    path_npz : str or None, default '~/work/NHANES/NPZ/'
         Path to folder containing 'nhanes_counts.npz' and 'nhanes_triax.npz'
+        If accelerometry is loaded correctly, userid is shrinked to accelerometry subset
 
     """
     
     def __init__(self, path_csv="~/work/NHANES/CSV/nhanes_userdata.csv", path_npz="~/work/NHANES/NPZ/"):
         self._df = pd.read_csv(os.path.expanduser(path_csv), delimiter=";", index_col=0, header=[0,1])
-        xnpz1 = np.load(f"{os.path.expanduser(path_npz)}/nhanes_counts.npz")
-        xnpz2 = np.load(f"{os.path.expanduser(path_npz)}/nhanes_triax.npz")
-        userid1 = xnpz1["userid"]
-        userid2 = xnpz2["userid"]
-        self._userid = np.concatenate([userid1, userid2])
-        self._survey = np.array([2003] * len(userid1) + [2011] * len(userid2))
-        self._x = np.vstack([xnpz1["counts"], xnpz2["triax"]]).astype(float)
-        self._categ = np.vstack([np.zeros_like(xnpz1["counts"], np.int8), xnpz2["categ"]]).astype(np.int8)
+        self._userid = self._df.index.values
+        try:
+            self.has_accelerometry = True
+            xnpz1 = np.load(f"{os.path.expanduser(path_npz)}/nhanes_counts.npz")
+            xnpz2 = np.load(f"{os.path.expanduser(path_npz)}/nhanes_triax.npz")
+            userid1 = xnpz1["userid"]
+            userid2 = xnpz2["userid"]
+            self._userid = np.concatenate([userid1, userid2])
+            self._x = np.vstack([xnpz1["counts"], xnpz2["triax"]]).astype(float)
+            self._categ = np.vstack([np.zeros_like(xnpz1["counts"], np.int8), xnpz2["categ"]]).astype(np.int8)
+            self._df = self._df.loc[self._userid]
+        except:
+            self.has_accelerometry = False
+            self._x = np.zeros((len(self._userid))) * np.nan
+            self._categ = np.zeros((len(self._userid))) * np.nan
+        dct = self._df[("Demographic", "Survey")].to_dict()
+        self._survey = 1997 + 2 * np.vectorize(dct.get)(self._userid)
         print('NUSERS', len(self.userid))
 
 
@@ -174,6 +184,28 @@ class NhanesLoader():
         return cols
     
 
+    def column_to_category_column(self, column):
+        """
+        Get (category, column) by column name
+
+        Parameters
+        ----------
+        column : str
+            Column name
+        
+        Returns
+        -------
+        tuple
+            (category, column) tuple
+        
+        """
+        cols = np.array(self._df.columns.to_list()).T
+        dct = dict(zip(cols[1], cols[0]))
+        return (dct[column], column)
+
+
+
+
     def userdata(self, field, cond=None, userid=None):
         """
         Get values of userdata (for selected user ids)
@@ -216,6 +248,36 @@ class NhanesLoader():
             val = (ops[op](val, float(v))).astype(float)
             val[~mask] = np.nan
         return val
+
+
+    def print_summary(self, col=None, codebook=None):
+        """
+        Print available userdata fileds summary
+
+        Parameters
+        ----------
+        codebook : pynhanes.CodeBook object or None, default None
+            Print fileds dictionary (optional)
+        
+        """
+        if col is not None:
+            column = col if isinstance(col, tuple) else self.column_to_category_column(col)
+            val = self._df[column].values
+            nan = np.sum(np.isnan(val))
+            nan = np.clip(int(100 * nan / len(val)), 1, 100) if nan else 0
+            nan = f"-- {nan}% NaN" if nan else ""
+            unique = np.unique(val)
+            print(col)
+            print(unique, nan)
+            if len(unique) <= 10 and codebook is not None:
+                dct = codebook.dict[column[-1]]
+                if all([u in dct for u in unique[np.isfinite(unique)]]):
+                    print(dct)
+            print()
+        else:
+            for col in self._df.columns:
+                self.print_summary(col, codebook)
+        return
 
 
     @staticmethod
@@ -319,6 +381,7 @@ class CodeBook():
         dct = json.loads(text)
         if digitize:
             dct = {int(key): val for key, val in dct.items() if key.isdigit()}
+            dct = {key: dct[key] for key in sorted(list(dct.keys()))}
         return dct
 
 
@@ -360,7 +423,11 @@ class CodeBook():
         elif os.path.exists(os.path.expanduser(variables)):
             dct = load_variables(variables)
             for key, val in dct.items():
-                dct[key] = self._codebook[val[0]]
+                decoder = {}
+                for i in range(len(val)):
+                    decoder.update(self._codebook[val[i]])
+                decoder = {key: decoder[key] for key in sorted(list(decoder.keys()))}
+                dct[key] = decoder
                 # Fix dictionary for 'Smoking status' (combined field SMQ020/SMQ040)
                 if key == "Smoking status":
                     dct[key] = {0: "Never", 1: "Quit", 2: "Current"}

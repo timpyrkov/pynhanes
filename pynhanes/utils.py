@@ -2,8 +2,12 @@
 # -*- coding: utf8 -*-
 
 import numpy as np
+import pandas as pd
 import pylab as plt
+import seaborn as sns
 from scipy import stats
+from itertools import combinations
+from statannotations.Annotator import Annotator
 
 
 def age_cohorts(age, dt=10):
@@ -242,7 +246,7 @@ def plot_age_fraction(x, age, window=1, nmin=0, cmap="jet", labels=None, nbin=5,
     labels : dict, or None, default None
         Matplotlib text label for plotted line
     nbin : int, default 5
-        Number of bins (groups); Only applicable when n categories > 15
+        Number of bins (groups); Only applicable when n categories > 10
     ax : matplotlib.pyplot.Axes object, default None
         Axes for plotting
 
@@ -255,7 +259,7 @@ def plot_age_fraction(x, age, window=1, nmin=0, cmap="jet", labels=None, nbin=5,
     if ax is None:
         ax = plt.gca()
     values = np.unique(x[np.isfinite(x)])[::-1]
-    if len(values) > 15:
+    if len(values) > 10:
         x, labels = digitize(x, nbin)
         values = np.unique(x[np.isfinite(x)])[::-1]
     n = len(values)
@@ -300,12 +304,13 @@ def digitize(x, nbin=5):
     mask = np.isfinite(x)
     bins = np.arange(nbin + 1) / float(nbin)
     q = np.quantile(x[mask], bins)
-    xbinned = np.digitize(x, q[1:-1])
+    xbinned = np.digitize(x, q[1:-1]).astype(float)
     dct = {i: f"{q[i]:.1f}-{q[i+1]:.1f}" for i in range(len(q) - 1)}
+    xbinned[~mask] = np.nan
     return xbinned, dct
 
 
-def pvalue(x, y, n=100, niter=100):
+def pvalue(x, y, n=100, niter=100, seed=0, func=stats.ks_2samp):
     """
     Calculate log-averaged pvalue
 
@@ -317,6 +322,11 @@ def pvalue(x, y, n=100, niter=100):
         Number of samples to draw each time from each distribution
     niter : int, default 100
         Number of interation to randomly draw samples from each distribution
+    seed : int, default 0
+        Numpy random seed
+    func : function object, default stats.ks_2samp
+        Function from scipy.stats to calculate p-value (should accept x, y 
+        as the first two arguments, and return p as the second argument)
 
     Returns
     -------
@@ -325,17 +335,116 @@ def pvalue(x, y, n=100, niter=100):
 
     """
     p = []
+    np.random.seed(seed)
     for i in range(niter):
         x_ = np.random.choice(x, n)
         y_ = np.random.choice(y, n)
         try:
-            _, p_ = stats.ks_2samp(x_, y_)
+            _, p_ = func(x_, y_)
         except:
             p_ = 1.0
         p.append(p_)
     p = np.array(p)
     p = np.exp(np.mean(np.log(p)))
     return p
+
+
+def pvalues(x, y, dct, n=100, niter=100, seed=0, func=stats.ks_2samp):
+    """
+    Calculate log-averaged pvalues for combinations of categorical x
+
+    Parameters
+    ----------
+    x, y : ndarray
+        Two arrays of measurements, sample sizes can be different
+    dct : dict
+        Dictionary to cinvert x from numerical to text values
+    n : int, default 100
+        Number of samples to draw each time from each distribution
+    niter : int, default 100
+        Number of interation to randomly draw samples from each distribution
+    seed : int, default 0
+        Numpy random seed
+    func : function object, default stats.ks_2samp
+        Function from scipy.stats to calculate p-value (should accept x, y 
+        as the first two arguments, and return p as the second argument)
+
+    Returns
+    -------
+    pvals : dict
+        Dictionary (label0, label1): log-averaged p-value
+
+    """
+    isnum = np.issubdtype(x.dtype, int) or np.issubdtype(x.dtype, float)
+    x = np.vectorize(dct.get)(x) if isnum else x
+    order = []
+    for key, val in dct.items():
+        if val in x and val not in order:
+            order.append(val)
+    pairs = list(combinations(order, 2))
+    pvals = {}
+    for pair in pairs:
+        x0 = y[x == pair[0]]
+        x1 = y[x == pair[1]]
+        p = pvalue(x0, x1, n, niter, seed, func)
+        pvals[pair] = p
+    return pvals
+
+
+def plot_boxplot(x, y, xlabel, ylabel, dct, pvalues=None, 
+            cmap="viridis_r", figsize=(16,4)):
+    """
+    Plot boxplot with pvalue annotations
+
+    Parameters
+    ----------
+    x, y : ndarray
+        Two arrays of measurements, sample sizes can be different
+    xlabel : str
+        Name of x (categorical) variable 
+    ylabel : str
+        Name of y (continuous) variable 
+    dct : dict
+        Dictionary to cinvert x from numerical to text values
+    pvalues : dict
+        Dictionary (label0, label1): log-averaged p-value
+    cmap : str, default 'viridis_r'
+        Matplotlib colormap name or Seaborn palette name
+    figsize : tuple, default (16,4)
+        Figure size
+
+    Returns
+    -------
+    ax : matplotlib.pyplot.Axes object
+        Axes for plotting
+
+    """
+    isnum = np.issubdtype(x.dtype, int) or np.issubdtype(x.dtype, float)
+    x = np.vectorize(dct.get)(x) if isnum else x
+    order = []
+    for key, val in dct.items():
+        if val in x and val not in order:
+            order.append(val)
+    df = pd.DataFrame({xlabel: x, ylabel: y})
+    df.dropna(inplace=True)
+    plt.figure(figsize=figsize, facecolor="white")
+    plt.title(xlabel)
+    ax = plt.gca()
+    if len(df):
+        ax = sns.boxenplot(x=xlabel, y=ylabel, data=df, order=order, palette=cmap)
+    if pvalues is not None:
+        # Add custom pvalue annotations:
+        # https://github.com/trevismd/statannotations/blob/master/usage/example.ipynb
+        pvals = {k: v for (k, v) in pvalues.items() if v < 0.05}
+        pairs = list(pvals.keys())
+        pvals = list(pvals.values())
+        if len(pairs):
+            annotator = Annotator(ax, pairs, data=df, x=xlabel, y=ylabel, order=order)
+            annotator.configure(test=None, text_format='simple', 
+                                verbose=0).set_pvalues(pvalues=pvals)
+            annotator.annotate()
+    plt.show()
+    return ax
 
 
 import types
