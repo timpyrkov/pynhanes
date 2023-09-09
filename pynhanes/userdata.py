@@ -470,7 +470,6 @@ def processing(variables, codebook, data):
             x[(x < 0.1)] = 0.1
         x = float_to_round(x)
         x = float_to_int(x)
-        mask = ~np.isnan(x) if np.issubdtype(x.dtype, float) else np.ones((len(x))).astype(bool)
         d = pd.DataFrame(data=x.reshape(-1,1), index=idx, columns=[[cat],[name]])
         df.append(d)
     df = pd.concat(df, join="outer", axis=1)

@@ -7,6 +7,7 @@ import pandas as pd
 import operator
 import json
 import jsoncomment
+import warnings
 
 
 
@@ -65,9 +66,9 @@ class NhanesLoader():
             self._x = np.vstack([xnpz1["counts"], xnpz2["triax"]]).astype(float)
             self._categ = np.vstack([np.zeros_like(xnpz1["counts"], np.int8), xnpz2["categ"]]).astype(np.int8)
             self._df = self._df.loc[self._userid]
-        except:
+        except FileNotFoundError as e:
             self.has_accelerometry = False
-            self._x = np.zeros((len(self._userid))) * np.nan
+            self._x = np.zeros((len(self._userid),1)) * np.nan
             self._categ = np.zeros((len(self._userid))) * np.nan
         dct = self._df[("Demographic", "Survey")].to_dict()
         self._survey = 1997 + 2 * np.vectorize(dct.get)(self._userid)
@@ -114,9 +115,12 @@ class NhanesLoader():
         
         """
         x_ = np.copy(self._x)
-        d = np.diff(x_, axis=1, append=x_[:,:1])
-        mask = (x_ > 32000) & (d==0)
-        x_[mask] = 0
+        if self.has_accelerometry:
+            d = np.diff(x_, axis=1, append=x_[:,:1])
+            mask = (x_ > 32000) & (d==0)
+            x_[mask] = 0
+        else:
+            warnings.warn("Accelerometry file not found. Check path to file.")
         return x_
 
 
@@ -234,10 +238,14 @@ class NhanesLoader():
         if userid is None:
             userid = self.userid
         val = np.zeros((len(userid))) * np.nan
+        if field.lower() == "const":
+            val = np.ones((len(userid)))
         categ = np.array(self._df.columns.to_list()).T
         categ = dict(zip(categ[1], categ[0]))
-        if field in categ:
-            col = (categ[field], field)
+        key = [k for k in categ.keys() if k.lower() == field.lower()]
+        key = key[0] if len(key) else field
+        if key in categ:
+            col = (categ[key], key)
             dct = self._df[col].to_dict()
             val = np.vectorize(dct.get)(userid)
         if cond is not None:
@@ -247,6 +255,7 @@ class NhanesLoader():
             mask = np.isfinite(val)
             val = (ops[op](val, float(v))).astype(float)
             val[~mask] = np.nan
+
         return val
 
 
@@ -424,19 +433,16 @@ class CodeBook():
             dct = load_variables(variables)
             for key, val in dct.items():
                 decoder = {}
-                for i in range(len(val)):
-                    decoder.update(self._codebook[val[i]])
+                for v in val[::-1]:
+                    decoder.update(self._codebook[v])
                 decoder = {key: decoder[key] for key in sorted(list(decoder.keys()))}
                 dct[key] = decoder
-                # Fix dictionary for 'Smoking status' (combined field SMQ020/SMQ040)
-                if key == "Smoking status":
-                    dct[key] = {0: "Never", 1: "Quit", 2: "Current"}
-                # Fix dictionary for 'Poverty status' (digitized field INDFMPIR)
-                if key == "Poverty status":
-                    dct[key] = {0: "Poor", 1: "Middle", 2: "Rich"}
                 # Fix dictionary for 'Diabetes' special field
                 if key == "Diabetes":
                     dct[key] = {0: "No", 1: "Yes"}
+                # Fix dictionary for 'Smoking status' (combined field SMQ020/SMQ040)
+                if key == "Smoking status":
+                    dct[key] = {0: "Never", 1: "Quit", 2: "Current"}
         self._codevar = dct
         return
 
@@ -475,6 +481,12 @@ class CodeBook():
         """
         dct = self._codebook
         dct.update(self._codevar)
+        dct["Poverty status"] = {0: "Poor", 1: "Middle", 2: "Rich"}
+        dct["Unemployment status"] = {1: "Other", 2: "School", 3: "Retired"}
+        dct["Sleep hours (status)"] = {5: "5 hours or less", 6: "6 hours", 7: "7 hours", 8: "8 hours", 9: "9 hours or more"}
+        dct["Occupation hours worked (status)"] = {0: "0 hours/week", 1: "0 - 25 hours/week", 2: "25 - 35 hours/week", 3: "35 - 45 hours/week", 4: "45 or more hours/week"}
+        dct["Health physical poor (status)"] = {0: "0 days/month", 1: "1 - 2 days/month", 2: "3 - 5 days/month", 3: "6 - 14 days/month", 4: "15 or more days/month"}
+        dct["Health mental poor (status)"] = {0: "0 days/month", 1: "1 - 2 days/month", 2: "3 - 5 days/month", 3: "6 - 14 days/month", 4: "15 or more days/month"}
         return dct
 
 

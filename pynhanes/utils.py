@@ -54,7 +54,7 @@ def age_avg_std(x, age, window=1, nmin=1):
         1D array of range [0 - 100)
     xavg : ndarray
         1D array of average x inside window for age in [0 - 100)
-    xavg : ndarray
+    xstd : ndarray
         1D array of standard deviation x inside window for age in [0 - 100)
 
     """
@@ -177,10 +177,10 @@ def age_detrending(x, age, gender=None, dct=None, window=1, nmin=0):
         1D array of detrended values of length N samples
 
     """
-    if dct is None:
-        dct = age_gender_dict(x, age, gender=gender, window=window, nmin=nmin)
     if gender is None:
         gender = np.zeros((len(age)))
+    if dct is None:
+        dct = age_gender_dict(x, age, gender=gender, window=window, nmin=nmin)
     age_ = age.astype(int)
     x_ = np.zeros_like(x) * np.nan
     for i, t in enumerate(age_):
@@ -190,7 +190,7 @@ def age_detrending(x, age, gender=None, dct=None, window=1, nmin=0):
     return x_
 
 
-def plot_age_avg_std(x, age, window=1, nmin=1, color=None, label='', ax=None):
+def plot_age_avg_std(x, age, window=1, nmin=1, color=None, label='', alpha=0.1, ax=None, **kwargs):
     """
     Plot x avg +/- std for 0 - 100 years
 
@@ -208,8 +208,12 @@ def plot_age_avg_std(x, age, window=1, nmin=1, color=None, label='', ax=None):
         Matplotlib color for plotted line
     label : str
         Matplotlib text label for plotted line
+    alpha : float, default 0.1
+        Filled area opacity (0.0 - 1.0)
     ax : matplotlib.pyplot.Axes object, default None
         Axes for plotting
+    **kwargs
+        Keyword arguments
 
     Returns
     -------
@@ -222,12 +226,13 @@ def plot_age_avg_std(x, age, window=1, nmin=1, color=None, label='', ax=None):
     t, xavg, xstd = age_avg_std(x, age, window=window, nmin=nmin)
     xmin = xavg - xstd
     xmax = xavg + xstd
-    plt.plot(t, xavg, color=color, label=label)
-    plt.fill_between(t, xmin, xmax, color=color, alpha=0.1)
+    line, = plt.plot(t, xavg, color=color, label=label, **kwargs)
+    color = line.get_color()
+    plt.fill_between(t, xmin, xmax, color=color, alpha=alpha)
     return ax
 
 
-def plot_age_fraction(x, age, window=1, nmin=0, cmap="jet", labels=None, nbin=5, ax=None):
+def plot_age_fraction(x, age, window=1, nmin=0, cmap="jet", labels=None, nbin=5, alpha=0.2, ax=None, **kwargs):
     """
     Plot x == val fractions for 0 - 100 years
 
@@ -247,8 +252,12 @@ def plot_age_fraction(x, age, window=1, nmin=0, cmap="jet", labels=None, nbin=5,
         Matplotlib text label for plotted line
     nbin : int, default 5
         Number of bins (groups); Only applicable when n categories > 10
+    alpha : float, default 0.2
+        Filled area opacity (0.0 - 1.0)
     ax : matplotlib.pyplot.Axes object, default None
         Axes for plotting
+    **kwargs
+        Keyword arguments
 
     Returns
     -------
@@ -275,7 +284,7 @@ def plot_age_fraction(x, age, window=1, nmin=0, cmap="jet", labels=None, nbin=5,
         label = str(val)
         if isinstance(labels, dict) and val in labels:
             label = labels[val]
-        plt.fill_between(t, frac[i], frac[i+1], color=colors[i], alpha=0.2)
+        plt.fill_between(t, frac[i], frac[i+1], color=colors[i], alpha=alpha)
         plt.plot(t, frac[i+1], color=colors[i], label=label)
     plt.legend(loc='upper left')
     return ax
@@ -391,8 +400,8 @@ def pvalues(x, y, dct, n=100, niter=100, seed=0, func=stats.ks_2samp):
     return pvals
 
 
-def plot_boxplot(x, y, xlabel, ylabel, dct, pvalues=None, 
-            cmap="viridis_r", figsize=(16,4)):
+def boxplot(x, y, xlabel, ylabel, dct, pvalues=None, 
+                 cmap="viridis_r", figsize=(16,4), **kwargs):
     """
     Plot boxplot with pvalue annotations
 
@@ -405,13 +414,15 @@ def plot_boxplot(x, y, xlabel, ylabel, dct, pvalues=None,
     ylabel : str
         Name of y (continuous) variable 
     dct : dict
-        Dictionary to cinvert x from numerical to text values
+        Dictionary to convert x from numerical to text values
     pvalues : dict
         Dictionary (label0, label1): log-averaged p-value
     cmap : str, default 'viridis_r'
         Matplotlib colormap name or Seaborn palette name
     figsize : tuple, default (16,4)
         Figure size
+    **kwargs
+        Keyword arguments
 
     Returns
     -------
@@ -431,7 +442,7 @@ def plot_boxplot(x, y, xlabel, ylabel, dct, pvalues=None,
     plt.title(xlabel)
     ax = plt.gca()
     if len(df):
-        ax = sns.boxenplot(x=xlabel, y=ylabel, data=df, order=order, palette=cmap)
+        ax = sns.boxenplot(x=xlabel, y=ylabel, data=df, order=order, palette=cmap, **kwargs)
     if pvalues is not None:
         # Add custom pvalue annotations:
         # https://github.com/trevismd/statannotations/blob/master/usage/example.ipynb

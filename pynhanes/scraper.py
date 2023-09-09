@@ -52,6 +52,7 @@ class NhanesScraper:
             for component in self.survey_components:
                 self.scrape_doc_files(component, year)
         self.add_mortality_data()
+        self.add_occupation_data()
         self.codebook_cleanup(recodebins)
 
         
@@ -231,6 +232,65 @@ class NhanesScraper:
         return
 
 
+    def add_occupation_data(self):
+        """
+        Add occupation group data, see description url:
+        https://wwwn.cdc.gov/Nchs/Nhanes/2003-2004/OCQ_C.htm#Appendix_A
+
+        """
+        code_dict = {
+            "1": "Executive, administrators, and managers",
+            "2": "Management related occupations",
+            "3": "Engineers, architects and scientists",
+            "4": "Health diagnosing, assessing and treating occupations",
+            "5": "Teachers",
+            "6": "Writers, artists, entertainers, and athletes",
+            "7": "Other professional specialty occupations",
+            "8": "Technicians and related support occupations",
+            "9": "Supervisors and proprietors, sales occupations",
+            "10": "Sales representatives, finance, business, & commodities ex. retail",
+            "11": "Sales workers, retail and personal services",
+            "12": "Secretaries, stenographers, and typists",
+            "13": "Information clerks",
+            "14": "Records processing occupations",
+            "15": "Material recording, scheduling, and distributing clerks",
+            "16": "Miscellaneous administrative support occupations",
+            "17": "Private household occupations",
+            "18": "Protective service occupations",
+            "19": "Waiters and waitresses",
+            "20": "Cooks",
+            "21": "Miscellaneous food preparation and service occupations",
+            "22": "Health service occupations",
+            "23": "Cleaning and building service occupations",
+            "24": "Personal service occupations",
+            "25": "Farm operators, managers, and supervisors",
+            "26": "Farm and nursery workers",
+            "27": "Related agricultural, forestry, and fishing occupations",
+            "28": "Vehicle and mobile equipment mechanics and repairers",
+            "29": "Other mechanics and repairers",
+            "30": "Construction trades",
+            "31": "Extractive and precision production occupations",
+            "32": "Textile, apparel, and furnishings machine operators",
+            "33": "Machine operators, assorted materials",
+            "34": "Fabricators, assemblers, inspectors, and samplers",
+            "35": "Motor vehicle operators",
+            "36": "Other transportation and material moving occupations",
+            "37": "Construction laborers",
+            "38": "Laborers, except construction",
+            "39": "Freight, stock, and material movers, hand",
+            "40": "Other helpers, equipment cleaners, hand packagers and laborers",
+            "41": "Military occupations",
+            "98": "Blank but applicable",
+        }
+        for code in ["OCD240", "OCD390", "OCD470"]:
+            dct = self.var_dict[code]
+            self.var_dict[code] = {
+                "code": code,
+                "name": dct["name"],
+                "category": dct["category"],
+                "codebook": code_dict,
+            }
+        return
 
     @property
     def varlist(self):
