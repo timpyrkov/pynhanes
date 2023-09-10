@@ -4,6 +4,7 @@
 import os
 import numpy as np
 import pandas as pd
+from datetime import datetime
 import operator
 import json
 import jsoncomment
@@ -287,6 +288,48 @@ class NhanesLoader():
             for col in self._df.columns:
                 self.print_summary(col, codebook)
         return
+
+
+    def generate_random_survey_date(self, seed=None):
+        """
+        Generate random survey date based on year and season (Winter/Summer)
+
+        Parameters
+        ----------
+        seed : int or None, default None
+            Random seed
+
+        Returns
+        -------
+        ndarray
+            Array of ordinal dates (1 = Jan 1st, 1 AD)
+
+        """
+        np.random.seed(seed)
+        user_year = self.survey
+        user_season = self._df[("Demographic", "Season of year")].values
+        user_season[~np.isfinite(user_season)] = 1
+        idate_min = datetime.strptime(f"{user_year.min()}", "%Y").toordinal()
+        idate_max = datetime.strptime(f"{user_year.max()+2}", "%Y").toordinal()
+        idate = np.arange(idate_min, idate_max)
+        weekday = (idate + 6) % 7 + 1
+        idate = idate[weekday == 1] # Keep only Mondays
+        date = [datetime.fromordinal(i) for i in idate]
+        year = np.array([d.year for d in date])
+        month = np.array([d.month for d in date])
+        season = 1 + (((month + 1) % 12) >= 6).astype(int)
+        nuser = len(user_year)
+        user_idate = np.zeros((nuser)).astype(int)
+        print(np.unique(year))
+        print(np.unique(season))
+        for i in range(nuser):
+            mask = (year == user_year[i]) | (year == user_year[i] + 1)
+            mask = mask & (season == user_season[i])
+            if np.sum(mask):
+                user_idate[i] = np.random.choice(idate[mask])
+            else:
+                print("ERROR", user_year[i], user_season[i])
+        return user_idate
 
 
     @staticmethod
