@@ -258,7 +258,7 @@ def load_xpts(fnames):
 
 def load_dat(fname):
     """
-    Load mortality .dat fixed-withdth-file
+    Load linked mortality .dat fixed-withdth-file
     """
     col_widths = [14, 1, 1, 3, 1, 1, 1, 4, 8, 8, 3, 3]
     col_names = ["SEQN", "ELIGSTAT", "MORTSTAT", "UCOD_LEADING",
@@ -271,10 +271,11 @@ def load_dat(fname):
 
 def load_dats(folder):
     """
-    Load all mortality .dat fixed-withdth-files
+    Load all linked mortality .dat fixed-withdth-files
     """
-    fnames = sorted(glob.glob(f"{folder}/*_MORT_2015_PUBLIC.dat"))
+    fnames = sorted(glob.glob(f"{folder}/*_MORT_*_PUBLIC.dat"))
     df = pd.concat([load_dat(f) for f in fnames])
+    df = df[~df.index.duplicated(keep="last")]
     return df
 
 

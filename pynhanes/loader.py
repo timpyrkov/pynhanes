@@ -320,15 +320,10 @@ class NhanesLoader():
         season = 1 + (((month + 1) % 12) >= 6).astype(int)
         nuser = len(user_year)
         user_idate = np.zeros((nuser)).astype(int)
-        print(np.unique(year))
-        print(np.unique(season))
         for i in range(nuser):
             mask = (year == user_year[i]) | (year == user_year[i] + 1)
             mask = mask & (season == user_season[i])
-            if np.sum(mask):
-                user_idate[i] = np.random.choice(idate[mask])
-            else:
-                print("ERROR", user_year[i], user_season[i])
+            user_idate[i] = np.random.choice(idate[mask])
         return user_idate
 
 
