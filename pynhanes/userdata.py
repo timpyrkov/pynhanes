@@ -273,9 +273,11 @@ def load_dats(folder):
     """
     Load all linked mortality .dat fixed-withdth-files
     """
+    df = pd.DataFrame()
     fnames = sorted(glob.glob(f"{folder}/*_MORT_*_PUBLIC.dat"))
-    df = pd.concat([load_dat(f) for f in fnames])
-    df = df[~df.index.duplicated(keep="last")]
+    if len(fnames):
+        df = pd.concat([load_dat(f) for f in fnames])
+        df = df[~df.index.duplicated(keep="last")]
     return df
 
 

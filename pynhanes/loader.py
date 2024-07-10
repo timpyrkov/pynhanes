@@ -71,8 +71,10 @@ class NhanesLoader():
             self.has_accelerometry = False
             self._x = np.zeros((len(self._userid),1)) * np.nan
             self._categ = np.zeros((len(self._userid))) * np.nan
-        dct = self._df[("Demographic", "Survey")].to_dict()
-        self._survey = 1997 + 2 * np.vectorize(dct.get)(self._userid)
+        # dct = self._df[("Demographic", "Survey")].to_dict()
+        # self._survey = 1997 + 2 * np.vectorize(dct.get)(self._userid)
+        survey = self._df[("Demographic", "Survey")].values
+        self._survey = np.array([int(s[:4]) for s in survey])
         print('NUSERS', len(self.userid))
 
 

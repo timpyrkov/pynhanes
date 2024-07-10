@@ -29,7 +29,7 @@ NHANES website has hierarchical organization of data:
 
       - Data variables (.DOC and .XPT files)
 
-For data analysis it is, however, more conveninet to have all data in Pandas DataFrame of NumPy arrays. This repo is here to help you make it.
+It is conveninet to have all data in Pandas DataFrame of NumPy arrays for data analysis. This repo is here to help you make it.
 
 NOTE: Please, keep in mind, that some NHANES data fields have been recoded since 1999. Make sure you have reviewed the NHANES website and understand how the code processed and changed the data. Especially pay attention to categorical data. This may have effect on data analysis results.
 
@@ -37,24 +37,26 @@ NOTE: Please, keep in mind, that some NHANES data fields have been recoded since
 
 NHANES Parser lib offers tool to get data in Pandas and NumPy:
 
-1) Create a working folder, e.g. `~/work/NHANES/`, copy notebooks from repository folder `sripts` to the working folder and create subfolders `XPT`, `CSV`, `NPZ`
+1) Create a working folder, e.g. `~/work/NHANES/`, copy notebooks from the repository folder `sripts` to the working folder and create subfolders `XPT`, `CSV`, `NPZ`
 
-2) `parse_codebook.ipynb` scrapes hierarchical structure of NHANES website to Pandas DataFrame (default: save data in `CSV` subfolder)
+2) Copy `nhanes_variables.json` from the repository folder `sripts` to your `CSV` subfolder
 
-3) `pywgetxpt` can download .XPT category files for all survey years (default: save data in `XPT` subfolder)
+2) Run `parse_codebook.ipynb` to scrape hierarchical structure of NHANES website to Pandas DataFrame (saves data to `CSV` subfolder)
 
-4) `parse_userdata.ipynb` gets a list of selected data variable fields and converts .XPT and mortality .DAT files to Pandas DataFrame (default: save data in `CSV` subfolder)
+3) Use `pywgetxpt` to download needed .XPT category files for all survey years (`pywgetxpt DEMO -o XPT` saves DEMO data to `XPT` subfolder)
 
-5) `parse_activity.ipynb` converts 2003-2006 and 2011-2014 accelerometry data to NumPy arrays (default: save data in `NPZ` subfolder)
+4) Run `parse_userdata.ipynb` to get a list of selected data variable fields and converts .XPT and mortality .DAT files to Pandas DataFrame (saves data to `CSV` subfolder)
 
-6) `load_and_plot.ipynb` shows an example how to load and hadle parsed data
+5) Optionally run `parse_activity.ipynb` to convert 2003-2006 and 2011-2014 accelerometry data to NumPy arrays (saves data in `NPZ` subfolder)
 
-# 
-
-\* `parse_codebook.ipynb` produces a codebook DataFrame which a handy tool to convert numerically-encoded values to human-readable labels
+6) Run `load_and_plot.ipynb` to see an example of how to load and hadle parsed data
 
 # 
-\** `parse_userdata.ipynb` can combine several variables into a sinle variable. Normally you would like to do that if:
+
+\* `parse_codebook.ipynb` produces a codebook DataFrame which is a handy tool to convert numerically-encoded values to human-readable labels
+
+# 
+\** `parse_userdata.ipynb` may combine several variables into a sinle variable. Normally you would like to do that if:
 
 **a) Same data field has alternative names in diffrenet survey years (but be careful since the range of values may have changed -see the codebook):**
 
