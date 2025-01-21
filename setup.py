@@ -7,7 +7,7 @@ def read(fname):
 
 setup(
     name="pynhanes",
-    version="0.0.20",
+    version="0.0.21",
     author="Tim Pyrkov",
     author_email="tim.pyrkov@gmail.com",
     description="Python parser and scraper for NHANES accelerometry and questionnaire",

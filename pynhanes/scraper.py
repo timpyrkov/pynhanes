@@ -48,9 +48,11 @@ class NhanesScraper:
         self.survey_suffix = {y: f"_{chr(66 + (y - 2000) // 2)}" for y in self.survey_years}
         self.categ_dict = {}
         self.var_dict = {}
+        # Start scraping
+        rsession = requests.Session()
         for year in self.survey_years:
             for component in self.survey_components:
-                self.scrape_doc_files(component, year)
+                self.scrape_doc_files(component, year, rsession)
         self.add_mortality_data()
         self.add_occupation_data()
         self.codebook_cleanup(recodebins)
@@ -89,7 +91,7 @@ class NhanesScraper:
         return
 
 
-    def scrape_doc_files(self, component, year):
+    def scrape_doc_files(self, component, year, rsession):
         """
         Scrape category list from component/year page on NHANES website
 
@@ -99,13 +101,15 @@ class NhanesScraper:
             Components, e.g. "Demographics"
         year : int
             Year, e.g. 2003
+        rsession : requests.Session() object
+            Requsts session object
 
         """
         print(f"Scraping ({component}, {year})...")
         doc_urls = []
         url = "https://wwwn.cdc.gov/nchs/nhanes/search/datapage.aspx?" \
               "Component={}&CycleBeginYear={}".format(component, year)
-        soup = BeautifulSoup(requests.get(url).content)
+        soup = BeautifulSoup(rsession.get(url).content, features="lxml")
         rows = soup.find_all("tr")[1:]
         for row in rows:
             categ_name = row.find("td").text
@@ -118,13 +122,13 @@ class NhanesScraper:
                     self.categ_dict[categ_code] = categ_name
         for doc_url in tqdm(doc_urls):
             try:
-                self.scrape_variables(doc_url)
+                self.scrape_variables(doc_url, rsession)
             except:
                 pass
         return
 
 
-    def scrape_variables(self, doc_url):
+    def scrape_variables(self, doc_url, rsession):
         """
         Scrape variable list from category page on NHANES website
 
@@ -132,13 +136,15 @@ class NhanesScraper:
         ----------
         doc_url : str
             Web address of category variables description
+        rsession : requests.Session() object
+            Requsts session object
 
         """
-        year = int(doc_url.split("/")[-2].split("-")[0])
+        year = int(doc_url.split("/")[-3].split("-")[0])
         category = doc_url.split("/")[-1].split(".")[0]
         category = category.removesuffix(self.survey_suffix[year])
         
-        soup = BeautifulSoup(requests.get(doc_url).content)
+        soup = BeautifulSoup(rsession.get(doc_url).content, features="lxml")
         variables = soup.find_all("div", attrs={"class": "pagebreak"})
         for variable in variables:
             if variable.find("table"):
@@ -283,13 +289,14 @@ class NhanesScraper:
             "98": "Blank but applicable",
         }
         for code in ["OCD240", "OCD390", "OCD470"]:
-            dct = self.var_dict[code]
-            self.var_dict[code] = {
-                "code": code,
-                "name": dct["name"],
-                "category": dct["category"],
-                "codebook": code_dict,
-            }
+            if code in self.var_dict:
+                dct = self.var_dict[code]
+                self.var_dict[code] = {
+                    "code": code,
+                    "name": dct["name"],
+                    "category": dct["category"],
+                    "codebook": code_dict,
+                }
         return
 
     @property

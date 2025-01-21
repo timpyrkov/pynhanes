@@ -35,32 +35,58 @@ NOTE: Please, keep in mind, that some NHANES data fields have been recoded since
 
 # Quick start
 
-NHANES Parser lib offers tool to get data in Pandas and NumPy:
+NHANES Parser converts data to Pandas and NumPy format.
 
-1) Create a working folder, e.g. `~/work/NHANES/`, copy notebooks from the repository folder `sripts` to the working folder and create subfolders `XPT`, `CSV`, `NPZ`
+1) Make sure you have `wget` and `unzip` utilities installed.\
+For Mac OS use `brew install wget` and `brew install unzip`.\
+For Ubuntu use `apt install wget` and `apt install unzip`.
 
-2) Copy `nhanes_variables.json` from the repository folder `sripts` to your `CSV` subfolder
+2) Make sure you have `1Gb` free space on disk for downloading data from NHANES website.\
+Optionally, make sure you have additional `30Gb` free space on disk if you plan to dawnload and parse NHANES accelerometry data.
 
-2) Run `parse_codebook.ipynb` to scrape hierarchical structure of NHANES website to Pandas DataFrame (saves data to `CSV` subfolder)
+3) Download template scripts and subfolders from this github repository (35Kb). Unzip to make a working folder for downloading and parsing raw data from NHANES website (You can use another name instead of `workfolder` if you wish).
+```
+wget https://github.com/timpyrkov/pynhanes/archive/master/scripts.zip
+```
+```
+unzip -j scripts.zip 'pynhanes-master/scripts/*' 'pynhanes-master/pynhanes/wgetxpt.py' -d workfolder
+```
 
-3) Use `pywgetxpt` to download needed .XPT category files for all survey years (`pywgetxpt DEMO -o XPT` saves DEMO data to `XPT` subfolder; requires `wget` tool installed)
+4) Go to your working folder, create subfolders, and move `nhanes_variables.json` to the `CSV` subfolder.
+```
+cd workfolder
+```
+```
+mkdir XPT; mkdir NPZ; mkdir CSV; mv nhanes_variables.json CSV
+```
 
-4) Run `parse_userdata.ipynb` to get a list of selected data variable fields and converts .XPT and mortality .DAT files to Pandas DataFrame (saves data to `CSV` subfolder)
+5) `wgetxpt.py` downloads .XPT category files you need.\
+For example, to download `DEMO` category files to `XPT/` subfolder, run:
+```
+python wgetxpt.py DEMO -o XPT
+```
 
-5) Optionally run `parse_activity.ipynb` to convert 2003-2006 and 2011-2014 accelerometry data to NumPy arrays (saves data in `NPZ` subfolder)
+6) `parse_codebook.ipynb` scrapes hierarchy of NHANES data fields and saves to Pandas-readable `CSV/nhanes_codebook.csv`
 
-6) Run `load_and_plot.ipynb` to see an example of how to load and hadle parsed data
+7) `parse_userdata.ipynb` parses .XPT and mortality .DAT files to Pandas-readable `CSV/nhanes_userdata.csv`.\
+You need to manually download mortality .DAT files from the NHANES website, otherwise parsing mortality is skipped.\
+You need to manually edit `CSV/nhanes_variables.json` to add or remove NHANES data fileds which should be parsed.
+
+8) `parse_activity.ipynb` converts accelerometry .XPT from  and 2011-2014 surveys (`PAX` category) and saves to NumPy-readable:\
+`NPZ/nhanes_steps.npz` - step counts for 2005-2006 survey;\
+`NPZ/nhanes_counts.npz` - activity counts for 2003-2006 surveys;\
+`NPZ/nhanes_triax.npz` - activity counts for 2011-2014 surveys;\
+You need approximately `30Gb` free space to store raw accelerometry .XPT files.\
+Note that 2011-2014 surveys have status prediction for each minute: 0 - Missing, 1 - Wake wear, 2 - Sleep wear, 3 - Non wear, 4  - Unknown
+
+9) `load_and_plot.ipynb` provides example of loading and handling parsed data stored now in the `CSV/` subfolder
 
 # 
 
 \* `parse_codebook.ipynb` produces a codebook DataFrame which is a handy tool to convert numerically-encoded values to human-readable labels
 
 # 
-\** `parse_activity.ipynb` parses Minute wake/sleep/non-wear prediction from PAXPREDM field for 2011-2012 and 2013-2014 surveys encoded as:
-0 - Missing, 1 - Wake wear, 2 - Sleep wear, 3 - Non wear, 4 - Unknown 
-
-# 
-\*** `parse_userdata.ipynb` may combine several variables into a sinle variable. Normally you would like to do that if:
+\** `parse_userdata.ipynb` may combine several variables into a sinle variable. Normally you would like to do that if:
 
 **a) Same data field has alternative names in diffrenet survey years (but be careful since the range of values may have changed -see the codebook):**
 

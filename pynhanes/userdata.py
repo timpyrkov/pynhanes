@@ -59,7 +59,7 @@ def fname_to_categ(fname):
     return categ
 
 
-def list_xpts_missing(variables, codebook, folder=None):
+def list_xpts_missing(variables, codebook, folder="XPT"):
     """
     List xpt categories that need to be downloded for a given 
     variable codes list (variables). If 'folder' given - 
@@ -75,13 +75,14 @@ def list_xpts_missing(variables, codebook, folder=None):
     dct = codebook["category"].to_dict()
     req = [dct[v] if v in dct else "" for v in variables_list]
     fnames = sorted(glob.glob(f"{folder}/*.XPT"))
+    fnames = fnames + sorted(glob.glob(f"{folder}/*.xpt"))
     xpts = [fname_to_categ(f) for f in fnames]
     xpts = set(req) - set(xpts + ["MORT", ""])
     xpts = list(xpts)
     return xpts
 
 
-def list_xpts_loaded(variables, codebook, folder=None):
+def list_xpts_loaded(variables, codebook, folder="XPT"):
     """
     List files that should be loaded from download folder
     for a given variable codes list (variables).
@@ -90,6 +91,7 @@ def list_xpts_loaded(variables, codebook, folder=None):
     dct = codebook["category"].to_dict()
     req = [dct[v] if v in dct else "" for v in variables_list]
     fnames = sorted(glob.glob(f"{folder}/*.XPT"))
+    fnames = fnames + sorted(glob.glob(f"{folder}/*.xpt"))
     xpts = [fname_to_categ(f) for f in fnames]
     mask = np.array([True if x in req else False for x in xpts])
     fnames = np.array(fnames)[mask].tolist()
@@ -107,7 +109,8 @@ def sort_xpts_loaded(fnames):
     categ_list = np.array([fname_to_categ(f) for f in fnames], dtype=str)
     for categ in np.unique(categ_list):
         mask = categ_list == categ
-        xpts.append(fname_list[mask].tolist())
+        for fname in fname_list[mask]:
+            xpts.append(fname)
     return xpts
 
 
@@ -239,8 +242,15 @@ def load_xpt(fnames):
         df = pd.read_sas(fname, index="SEQN")
         df = df[~df.index.duplicated(keep="first")]
         return df
-    df = [load_file(f) for f in fnames]
-    df = pd.concat(df, join="outer", axis=0)
+    dflist = []
+    for f in fnames:
+        try:
+            df = load_file(f)
+        except:
+            print(f"WARNING! pd.read_sas() failed to read {f}")
+            df = pd.DataFrame()
+        dflist.append(df)
+    df = pd.concat(dflist, join="outer", axis=0)
     df = df[~df.index.duplicated(keep="first")]
     return df
 

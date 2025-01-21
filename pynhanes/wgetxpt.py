@@ -20,8 +20,10 @@ def main():
         os.makedirs(path)
 
     for years in survey_years:
+        print(years)
         suffix = survey_suffix[years]
-        cmd = f"wget https://wwwn.cdc.gov/Nchs/Nhanes/{years}/{args.xpt}{suffix}.XPT -P {path}"
+        #cmd = f"wget https://wwwn.cdc.gov/Nchs/Nhanes/{years}/{args.xpt}{suffix}.XPT -P {path}" # Obsolete path
+        cmd = f"wget https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/{years[:4]}/DataFiles/{args.xpt}{suffix}.xpt -P {path}"
         os.system(cmd)
 
 if __name__ == "__main__":
