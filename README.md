@@ -43,7 +43,7 @@ NHANES Parser lib offers tool to get data in Pandas and NumPy:
 
 2) Run `parse_codebook.ipynb` to scrape hierarchical structure of NHANES website to Pandas DataFrame (saves data to `CSV` subfolder)
 
-3) Use `pywgetxpt` to download needed .XPT category files for all survey years (`pywgetxpt DEMO -o XPT` saves DEMO data to `XPT` subfolder)
+3) Use `pywgetxpt` to download needed .XPT category files for all survey years (`pywgetxpt DEMO -o XPT` saves DEMO data to `XPT` subfolder; requires `wget` tool installed)
 
 4) Run `parse_userdata.ipynb` to get a list of selected data variable fields and converts .XPT and mortality .DAT files to Pandas DataFrame (saves data to `CSV` subfolder)
 
@@ -56,7 +56,11 @@ NHANES Parser lib offers tool to get data in Pandas and NumPy:
 \* `parse_codebook.ipynb` produces a codebook DataFrame which is a handy tool to convert numerically-encoded values to human-readable labels
 
 # 
-\** `parse_userdata.ipynb` may combine several variables into a sinle variable. Normally you would like to do that if:
+\** `parse_activity.ipynb` parses Minute wake/sleep/non-wear prediction from PAXPREDM field for 2011-2012 and 2013-2014 surveys encoded as:
+0 - Missing, 1 - Wake wear, 2 - Sleep wear, 3 - Non wear, 4 - Unknown 
+
+# 
+\*** `parse_userdata.ipynb` may combine several variables into a sinle variable. Normally you would like to do that if:
 
 **a) Same data field has alternative names in diffrenet survey years (but be careful since the range of values may have changed -see the codebook):**
 
