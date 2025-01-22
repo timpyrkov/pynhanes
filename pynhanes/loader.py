@@ -74,6 +74,7 @@ class NhanesLoader():
         # dct = self._df[("Demographic", "Survey")].to_dict()
         # self._survey = 1997 + 2 * np.vectorize(dct.get)(self._userid)
         survey = self._df[("Demographic", "Survey")].values
+        print(np.unique(survey))
         self._survey = np.array([int(s[:4]) for s in survey])
         print('NUSERS', len(self.userid))
 

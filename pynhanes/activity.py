@@ -32,8 +32,10 @@ def paxraw_parser(input_folder, output_folder):
     >>> paxraw_parser("./XPT", "./NPZ")
 
     """
-    df = [pd.read_sas(input_folder + "/PAXRAW_C.XPT"),
-          pd.read_sas(input_folder + "/PAXRAW_D.XPT")]
+    fnames = sorted(os.listdir(os.path.expanduser(input_folder)))
+    fnames = [f for f in fnames if f.startswith('PAXRAW_C') or f.startswith('PAXRAW_D')]
+    fnames = [f for f in fnames if f.upper().endswith('.XPT')]
+    df = [pd.read_sas(f"{input_folder}/{f}") for f in fnames]
     df = pd.concat(df, ignore_index=True)
     df.fillna(0, inplace=True)
     df = df.astype(int)
@@ -98,6 +100,10 @@ def paxmin_parser(input_folder, output_folder):
     >>> paxmin_parser("./XPT", "./NPZ")
 
     """
+    fnames = sorted(os.listdir(os.path.expanduser(input_folder)))
+    fnames = [f for f in fnames if f.startswith('PAXRAW_G') or f.startswith('PAXRAW_H')]
+    fnames = [f for f in fnames if f.upper().endswith('.XPT')]
+    df = [pd.read_sas(f"{input_folder}/{f}") for f in fnames]
     df = [pd.read_sas(input_folder + "/PAXMIN_G.XPT"),
           pd.read_sas(input_folder + "/PAXMIN_H.XPT")]
     df = pd.concat(df, ignore_index=True)

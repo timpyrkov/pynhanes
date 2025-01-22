@@ -42,7 +42,7 @@ For Mac OS use `brew install wget` and `brew install unzip`.\
 For Ubuntu use `apt install wget` and `apt install unzip`.
 
 2) Make sure you have `1Gb` free space on disk for downloading data from NHANES website.\
-Optionally, make sure you have additional `30Gb` free space on disk if you plan to dawnload and parse NHANES accelerometry data.
+Optionally, make sure you have additional `30Gb` free space on disk if you plan to download and parse NHANES accelerometry data.
 
 3) Download template scripts and subfolders from this github repository (35Kb). Unzip to make a working folder for downloading and parsing raw data from NHANES website (You can use another name instead of `workfolder` if you wish).
 ```
@@ -74,8 +74,8 @@ You need to manually edit `CSV/nhanes_variables.json` to add or remove NHANES da
 
 8) `parse_activity.ipynb` converts accelerometry .XPT from  and 2011-2014 surveys (`PAX` category) and saves to NumPy-readable:\
 `NPZ/nhanes_steps.npz` - step counts for 2005-2006 survey;\
-`NPZ/nhanes_counts.npz` - activity counts for 2003-2006 surveys;\
-`NPZ/nhanes_triax.npz` - activity counts for 2011-2014 surveys;\
+`NPZ/nhanes_counts.npz` - activity counts for 2003-2004/2005-2006 surveys;\
+`NPZ/nhanes_triax.npz` - activity counts for 2011-2012/2013-2014 surveys;\
 You need approximately `30Gb` free space to store raw accelerometry .XPT files.\
 Note that 2011-2014 surveys have status prediction for each minute: 0 - Missing, 1 - Wake wear, 2 - Sleep wear, 3 - Non wear, 4  - Unknown
 
