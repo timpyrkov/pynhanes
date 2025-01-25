@@ -25,7 +25,7 @@ setup(
     include_package_data=True,
     install_requires=[
         "jsoncomment",
-        "numpy",
+        "numpy<2",
         "scipy",
         "matplotlib",
         "seaborn",
