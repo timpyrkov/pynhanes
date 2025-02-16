@@ -76,7 +76,7 @@ class NhanesLoader():
         survey = self._df[("Demographic", "Survey")].values
         print(np.unique(survey))
         self._survey = np.array([int(s[:4]) for s in survey])
-        print('NUSERS', len(self.userid))
+        print('N USERS', len(self.userid))
 
 
     @property
@@ -397,13 +397,17 @@ class CodeBook():
     ----------
     path_csv : str, default '~/work/NHANES/CSV/nhanes_userdata.csv'
         Path to user data csv file
-    variables : str or dict, default '~/work/NHANES/CSV/nhanes_variables.json'
-        Path to human-readable names .json file, or explicit 
-        dictiontionary of human-readable varable names
+    variables : list or str, default '~/work/NHANES/CSV/nhanes_variables.json'
+        List or path to .json containing requested variable or category codes / combined names
+
+
+    Example
+    -------
+    >>> import pynhanes
+    >>> codebook = pynhanes.CodeBook("./CSV/nhanes_codebook.csv")
 
     """
-
-    def __init__(self, path_csv="~/work/NHANES/CSV/nhanes_codebook.csv", 
+    def __init__(self, path_csv="~/work/NHANES/CSV/nhanes_codebook.csv",
                        variables="~/work/NHANES/CSV/nhanes_variables.json"):
         self._load_codebook(path_csv)
         self._load_variables(variables)
@@ -447,11 +451,12 @@ class CodeBook():
 
         """
         fname = os.path.expanduser(path)
-        df = pd.read_csv(fname, index_col=0)
-        df["icodebook"] = [self._text_to_dict(c, True) for c in df["codebook"].values]
-        df["codebook"] = [self._text_to_dict(c, False) for c in df["codebook"].values]
-        self._codebook = df["icodebook"].to_dict()
-        self._data = df
+        df = pd.read_csv(fname, delimiter=";", index_col=0)
+        df["Int Codebook"] = [self._text_to_dict(c, True) for c in df["Codebook"].values]
+        df["Codebook"] = [self._text_to_dict(c, False) for c in df["Codebook"].values]
+        self._codebook = df["Int Codebook"].to_dict()
+        self._data = df[["Name", "Combined Name", "Categories", "Category", "Category Name", 
+                         "Combined Category", "Component", "Codebook", "Int Codebook", "Recode"]]
         return
 
 
@@ -529,8 +534,6 @@ class CodeBook():
         dct["Health physical poor (status)"] = {0: "0 days/month", 1: "1 - 2 days/month", 2: "3 - 5 days/month", 3: "6 - 14 days/month", 4: "15 or more days/month"}
         dct["Health mental poor (status)"] = {0: "0 days/month", 1: "1 - 2 days/month", 2: "3 - 5 days/month", 3: "6 - 14 days/month", 4: "15 or more days/month"}
         return dct
-
-
 
 
 import types

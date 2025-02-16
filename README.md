@@ -77,7 +77,7 @@ You need to manually edit `CSV/nhanes_variables.json` to add or remove NHANES da
 `NPZ/nhanes_counts.npz` - activity counts for 2003-2004/2005-2006 surveys;\
 `NPZ/nhanes_triax.npz` - activity counts for 2011-2012/2013-2014 surveys;\
 You need approximately `30Gb` free space to store raw accelerometry .XPT files.\
-Note that 2011-2014 surveys have status prediction for each minute: 0 - Missing, 1 - Wake wear, 2 - Sleep wear, 3 - Non wear, 4  - Unknown
+Survyes 2011-2014 have status prediction for each minute: 0 - Missing, 1 - Wake wear, 2 - Sleep wear, 3 - Non wear, 4  - Unknown
 
 9) `load_and_plot.ipynb` provides example of loading and handling parsed data stored now in the `CSV/` subfolder
 
