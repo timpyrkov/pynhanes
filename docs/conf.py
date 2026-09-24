@@ -66,6 +66,42 @@ for _source, _target in NOTEBOOKS:
     with open(os.path.join(_into, _target), "w") as _handle:
         _handle.write(_text)
 
+# Read the Docs builds with "-j auto", so the notebooks are executed in
+# parallel processes that share this one working directory. Fetch what they
+# have in common once, here, before Sphinx reads anything: the guards inside
+# the notebooks then short-circuit and nothing races on a half-written file.
+RELEASE = "https://github.com/timpyrkov/pynhanes/releases/download/data-v1"
+SHARED = [("CSV/nhanes_userdata.csv.gz", f"{RELEASE}/nhanes_userdata.csv.gz"),
+          ("NPZ/nhanes_steps.npz", f"{RELEASE}/nhanes_steps.npz")]
+
+
+def _prefetch():
+    import urllib.request
+    for name, url in SHARED:
+        target = os.path.join(_into, name)
+        if os.path.isfile(target):
+            continue
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        print(f"conf.py: fetching {name}")
+        urllib.request.urlretrieve(url, target + ".part")
+        os.replace(target + ".part", target)          # atomic, so no half file
+    # the codebook the first notebook writes, so that the others never race
+    # with it for the same path
+    codebook = os.path.join(_into, "CSV", "nhanes_codebook.csv")
+    if not os.path.isfile(codebook):
+        from pynhanes import scraper
+        table = scraper.read_snapshot("codebook")
+        if table is not None:
+            os.makedirs(os.path.dirname(codebook), exist_ok=True)
+            table.to_csv(codebook + ".part", sep=";")
+            os.replace(codebook + ".part", codebook)
+
+
+try:
+    _prefetch()
+except Exception as _error:                            # a build offline still works
+    print(f"conf.py: could not prefetch the example data: {_error}")
+
 nbsphinx_execute = "always"
 nbsphinx_allow_errors = False
 nbsphinx_timeout = 900

@@ -284,3 +284,15 @@ def test_an_empty_npz_folder_is_reported_not_fatal(tmp_path, codes_csv):
     nhanes = ld.NhanesLoader(codes_csv, path_npz=str(folder), verbose=True)
     assert nhanes.has_accelerometry is False
     assert nhanes.userid.size > 0                      # the table still loaded
+
+
+def test_codebook_without_a_variables_file_uses_the_shipped_one(tmp_path, codebook_csv):
+    # the docs build has no ~/data folder, and CodeBook used to end up with an
+    # empty name -> labels mapping and raise KeyError on the first lookup
+    book = ld.CodeBook(codebook_csv, variables=str(tmp_path / "nowhere.json"))
+    assert len(book.dict) > 0
+    # a name of the shipped variables file whose codes this codebook does hold
+    assert book.dict["Health general"] == {1: "Excellent", 5: "Poor"}
+    # and one whose codes it does not is dropped rather than raising: a
+    # codebook of one survey covers only part of the curated list
+    assert "Gender" not in book.dict

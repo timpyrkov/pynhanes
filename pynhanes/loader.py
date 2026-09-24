@@ -873,12 +873,28 @@ class CodeBook():
         dct = {}
         if isinstance(variables, dict):
             dct.update(variables)
-        elif os.path.exists(os.path.expanduser(variables)):
-            dct = load_variables(variables)
-            for key, val in dct.items():
+        else:
+            path = os.path.expanduser(str(variables))
+            if not os.path.isfile(path):
+                # the curated file that ships with pynhanes, so that a machine
+                # with no ~/data folder still gets the value labels by name
+                from pynhanes.parser import shipped_variables   # lazy: avoids a cycle
+                shipped = shipped_variables()
+                if shipped is None:
+                    raise ValueError(f"Variables file '{variables}' not found, and pynhanes "
+                                     f"ships none")
+                path = str(shipped)
+            dct = load_variables(path)
+            for key, val in list(dct.items()):
                 decoder = {}
-                for v in val[::-1]:
+                # a codebook of one survey, or of a few data files, does not
+                # hold every code the variables file names - skip those rather
+                # than give up on the whole mapping
+                for v in [c for c in val[::-1] if c in self._codebook]:
                     decoder.update(self._codebook[v])
+                if not decoder:
+                    del dct[key]
+                    continue
                 decoder = {key: decoder[key] for key in sorted(list(decoder.keys()))}
                 dct[key] = decoder
                 # Fix dictionary for 'Diabetes' special field
