@@ -1,7 +1,7 @@
-![Python Versions](https://img.shields.io/pypi/pyversions/pynhanes?style=plastic)
-![PyPI](https://img.shields.io/pypi/v/pynhanes?style=plastic)
-![License](https://img.shields.io/pypi/l/pynhanes?style=plastic)
-![Documentation Status](https://readthedocs.org/projects/pynhanes/badge/?version=latest)
+[![Python Versions](https://img.shields.io/pypi/pyversions/pynhanes?style=plastic)](https://pypi.org/project/pynhanes/)
+[![PyPI](https://img.shields.io/pypi/v/pynhanes?style=plastic)](https://pypi.org/project/pynhanes/)
+[![License](https://img.shields.io/pypi/l/pynhanes?style=plastic)](https://opensource.org/licenses/MIT)
+[![Documentation Status](https://readthedocs.org/projects/pynhanes/badge/?version=latest)](https://pynhanes.readthedocs.io/en/latest/?badge=latest)
 
 # NHANES parser
 
