@@ -2,12 +2,16 @@
 # -*- coding: utf8 -*-
 
 import os
+import re
 import numpy as np
 import pandas as pd
 from datetime import datetime
 import operator
 import json
-import jsoncomment
+try:
+    import jsoncomment
+except ImportError:                 # pragma: no cover - optional dependency
+    jsoncomment = None
 import warnings
 
 
@@ -27,12 +31,168 @@ def load_variables(path):
         Dictionary {human-readable name -> list of NHNAES codes}
 
     """
-    parser = jsoncomment.JsonComment(json)
-    f = open(os.path.expanduser(path))
-    dct = parser.load(f)
-    f.close()
-    return dct
+    with open(os.path.expanduser(path)) as f:
+        if jsoncomment is not None:
+            return jsoncomment.JsonComment(json).load(f)
+        # same thing without the dependency: drop whole-line "//" comments
+        import re
+        return json.loads(re.sub(r"^\s*//.*$", "", f.read(), flags=re.M))
 
+
+
+def survey_years(values):
+    """
+    First year of the survey, from the text or the number that names it
+
+    The parsed table holds the survey as text ("1999-2000", and for the latest
+    survey "August 2021-August 2023") in layout "names", and as the NHANES
+    release number (1 ... 12) in layout "codes".
+
+    Parameters
+    ----------
+    values : array-like
+        Survey as text or as the release number
+
+    Returns
+    -------
+    ndarray
+        First year of each survey, NaN where it could not be read
+
+    """
+    years = []
+    for value in np.asarray(values, dtype=object):
+        if isinstance(value, str):
+            found = re.search(r"(?:19|20)\d{2}", value)
+            years.append(int(found.group()) if found else np.nan)
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            years.append(np.nan)
+            continue
+        # release 1 is 1999-2000, release 10 is 2017-2018, release 12 is 2021-2023
+        years.append(1997 + 2 * int(number) if np.isfinite(number) else np.nan)
+    return np.array(years, dtype=float)
+
+
+def decode_columns(df, codebook=None, log=None):
+    """
+    Give the table (topic, name) columns, whichever layout it was written in
+
+    pynhanes-parser writes two layouts: "names", whose columns are already
+    (topic, name), and "codes", whose columns are (data file, variable code) -
+    the layout of nhanes_userdata.csv. This turns the second into the first,
+    using the codebook of pynhanes-scraper, and merges the codes that share a
+    name (first code that has a value wins), as the parser does.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Table with a two-level column index
+    codebook : str, DataFrame or None, default None
+        Codebook .csv of pynhanes-scraper, or a DataFrame of it; None - the
+        names built into pynhanes (pynhanes.scraper.combined_names())
+    log : callable or None, default None
+        Function to print messages
+
+    Returns
+    -------
+    DataFrame
+        Table whose columns are (topic, name)
+
+    """
+    from pynhanes import scraper                  # lazy: keeps the import order simple
+    codes = [c[1] for c in df.columns]
+    names, topics = scraper.combined_names(), {}
+    if codebook is not None:
+        book = codebook
+        if isinstance(book, str):
+            book = pd.read_csv(os.path.expanduser(book), delimiter=";", index_col=0,
+                               usecols=["Code", "Combined Name", "Combined Category"])
+        names = book["Combined Name"].dropna().to_dict()
+        topics = book["Combined Category"].dropna().to_dict()
+    known = sum(1 for c in codes if c in names)
+    if known < max(1, len(codes) // 2):
+        return df                                  # already (topic, name)
+    if log is not None:
+        log(f"Decoding {known} of {len(codes)} columns from variable codes to names")
+    merged, order, used = {}, [], {}
+    for (data_file, code), column in zip(df.columns, df.columns):
+        name = names.get(code, code)
+        topic = topics.get(code) or data_file
+        if name in used:
+            merged[used[name]] = merged[used[name]].fillna(df[column])
+            continue
+        used[name] = (topic, name)
+        order.append((topic, name))
+        merged[(topic, name)] = df[column].copy()
+    out = pd.DataFrame(merged, index=df.index)
+    out = out[order]
+    out.columns = pd.MultiIndex.from_tuples(order)
+    return out
+
+
+def column_metadata(names, codebook=None):
+    """
+    What the codebook says about each column: its type and its truncated ends
+
+    Parameters
+    ----------
+    names : iterable
+        Column names, as they appear in the parsed table
+    codebook : str, DataFrame or None, default None
+        Codebook .csv of pynhanes-scraper, or a DataFrame of it
+
+    Returns
+    -------
+    dict
+        Name -> {"type": "Continuous" | "Categorical" | "Binary" | "Flag" |
+        "Text" | "Unknown", "truncated": "" | "top" | "bottom" | "bottom,top",
+        "labels": {value: what it means}}
+
+    """
+    if codebook is None:
+        return {}
+    book = codebook
+    if isinstance(book, str):
+        try:
+            book = pd.read_csv(os.path.expanduser(book), delimiter=";", index_col=0)
+        except (OSError, ValueError):
+            return {}
+    if "Combined Name" not in book.columns or "Type" not in book.columns:
+        return {}
+    wanted = set(names)
+    meta = {}
+    for name, rows in book.groupby("Combined Name"):
+        if name not in wanted:
+            continue
+        row = rows.iloc[0]
+        truncated = row["Truncated"] if "Truncated" in rows.columns else ""
+        labels = {}
+        # "Recoded Codebook" is the dictionary of the parsed table: No is 0
+        # there, and the missing codes are gone
+        for column in ("Recoded Codebook", "Codebook"):
+            if column not in rows.columns:
+                continue
+            try:
+                book_of_name = json.loads(row[column])
+            except (TypeError, ValueError):
+                continue
+            labels = {int(k): v for k, v in book_of_name.items() if str(k).isdigit()}
+            if labels:
+                break
+        meta[name] = {"type": str(row["Type"]),
+                      "truncated": "" if pd.isna(truncated) else str(truncated),
+                      "labels": labels}
+    return meta
+
+
+# One accelerometry measurement per file, so any of them can be loaded alone
+ACTIVITY_KEYS = {"counts": "nhanes_counts.npz", "steps": "nhanes_steps.npz",
+                 "triax": "nhanes_triax.npz"}
+# counts (2003-2006) and triax (2011-2014) are different participants, so they
+# stack; steps are a subset of the counts participants and are not added twice
+ACTIVITY_DEFAULT = ["counts", "triax", "steps"]
 
 
 class NhanesLoader():
@@ -46,37 +206,47 @@ class NhanesLoader():
 
     Parameters
     ----------
-    path_csv : str, default '~/work/NHANES/CSV/nhanes_userdata.csv'
-        Path to user data csv file
-    path_npz : str or None, default '~/work/NHANES/NPZ/'
-        Path to folder containing 'nhanes_counts.npz' and 'nhanes_triax.npz'
+    path_csv : str, default '~/data/NHANES/CSV/nhanes_userdata.csv'
+        Path to user data csv file, in either layout of pynhanes-parser
+    path_npz : str or None, default '~/data/NHANES/NPZ/'
+        Path to the folder with the accelerometry .npz files. Whichever of
+        them are there are used; none of them is required
+    activity : str, list or None, default None
+        Which accelerometry measurement(s) to read: 'counts' (2003-2006),
+        'steps' (2005-2006) or 'triax' (2011-2014). None reads every file
+        that is there
         If accelerometry is loaded correctly, userid is shrinked to accelerometry subset
+    codebook : str or None, default None
+        Codebook .csv of pynhanes-scraper, used to turn variable codes into
+        names; None - 'nhanes_codebook.csv' next to the user data, or the
+        names built into pynhanes
+    verbose : bool, default False
+        Print what was loaded
 
     """
     
-    def __init__(self, path_csv="~/work/NHANES/CSV/nhanes_userdata.csv", path_npz="~/work/NHANES/NPZ/"):
-        self._df = pd.read_csv(os.path.expanduser(path_csv), delimiter=";", index_col=0, header=[0,1])
+    def __init__(self, path_csv="~/data/NHANES/CSV/nhanes_userdata.csv",
+                 path_npz="~/data/NHANES/NPZ/", codebook=None, activity=None,
+                 verbose=False):
+        self.verbose = verbose
+        log = (lambda *a: print(*a)) if verbose else (lambda *a: None)
+        path = os.path.expanduser(path_csv)
+        self._df = pd.read_csv(path, delimiter=";", index_col=0, header=[0, 1],
+                               low_memory=False)
+        if codebook is None:
+            beside = os.path.join(os.path.dirname(path), "nhanes_codebook.csv")
+            codebook = beside if os.path.isfile(beside) else None
+        self._df = decode_columns(self._df, codebook, log)
         self._userid = self._df.index.values
-        try:
-            self.has_accelerometry = True
-            xnpz1 = np.load(f"{os.path.expanduser(path_npz)}/nhanes_counts.npz")
-            xnpz2 = np.load(f"{os.path.expanduser(path_npz)}/nhanes_triax.npz")
-            userid1 = xnpz1["userid"]
-            userid2 = xnpz2["userid"]
-            self._userid = np.concatenate([userid1, userid2])
-            self._x = np.vstack([xnpz1["counts"], xnpz2["triax"]]).astype(float)
-            self._categ = np.vstack([np.zeros_like(xnpz1["counts"], np.int8), xnpz2["categ"]]).astype(np.int8)
-            self._df = self._df.loc[self._userid]
-        except FileNotFoundError as e:
-            self.has_accelerometry = False
-            self._x = np.zeros((len(self._userid),1)) * np.nan
-            self._categ = np.zeros((len(self._userid))) * np.nan
-        # dct = self._df[("Demographic", "Survey")].to_dict()
-        # self._survey = 1997 + 2 * np.vectorize(dct.get)(self._userid)
-        survey = self._df[("Demographic", "Survey")].values
-        print(np.unique(survey))
-        self._survey = np.array([int(s[:4]) for s in survey])
-        print('N USERS', len(self.userid))
+        self._load_activity(path_npz, activity, log)
+        self._meta = column_metadata([c[1] for c in self._df.columns], codebook)
+        truncated = [n for n, m in self._meta.items() if m["truncated"]]
+        if truncated:
+            log(f"{len(truncated)} column(s) have a truncated end, e.g. "
+                f"{', '.join(sorted(truncated)[:4])} - see .truncated()")
+        self._survey = survey_years(self.column_values("Survey"))
+        log(f"{len(self.userid)} participants, surveys "
+            f"{', '.join(str(int(y)) for y in np.unique(self._survey[np.isfinite(self._survey)]))}")
 
 
     @property
@@ -192,6 +362,216 @@ class NhanesLoader():
         return cols
     
 
+    def _load_activity(self, path_npz, activity, log):
+        """
+        Read the accelerometry .npz files that are there
+
+        Each measurement is a file of its own, so any one of them can be used
+        alone - handy when only the 20 MB nhanes_steps.npz was downloaded. A
+        file that is not there is skipped rather than giving up on all of them,
+        and participants already taken from an earlier file are not taken twice.
+        """
+        wanted = ACTIVITY_DEFAULT if activity is None else activity
+        if isinstance(wanted, str):
+            wanted = [wanted]
+        unknown = [w for w in wanted if w not in ACTIVITY_KEYS]
+        if unknown:
+            raise ValueError(f"Unknown accelerometry measurement(s): {', '.join(unknown)}. "
+                             f"Use one or more of: {', '.join(ACTIVITY_KEYS)}.")
+        folder = os.path.expanduser(path_npz) if path_npz else None
+        userid, values, status, loaded = [], [], [], []
+        seen = set()
+        for name in wanted:
+            path = os.path.join(folder, ACTIVITY_KEYS[name]) if folder else ""
+            if not folder or not os.path.isfile(path):
+                continue
+            try:
+                npz = np.load(path)
+                ids = npz["userid"]
+                keep = np.array([i not in seen for i in ids], dtype=bool)
+                if not keep.any():
+                    continue
+                seen.update(ids[keep].tolist())
+                userid.append(ids[keep])
+                values.append(npz[name][keep].astype(float))
+                # the minute status was called "categ" before 2025, and the
+                # 2003-2006 files had none at all
+                if "status" in npz or "categ" in npz:
+                    code = npz["status"] if "status" in npz else npz["categ"]
+                    status.append(code[keep].astype(np.int8))
+                else:
+                    status.append(np.zeros_like(values[-1], np.int8))
+                loaded.append(f"{name} ({len(userid[-1])})")
+            except (KeyError, OSError) as error:
+                log(f"Could not read {path}: {error.__class__.__name__}: {error}")
+        if not userid:
+            self.has_accelerometry = False
+            self._x = np.zeros((len(self._userid), 1)) * np.nan
+            self._categ = np.zeros((len(self._userid))) * np.nan
+            if path_npz:
+                log(f"No accelerometry loaded from {path_npz}: none of "
+                    f"{', '.join(ACTIVITY_KEYS[w] for w in wanted)} is there")
+            return
+        width = max(v.shape[1] for v in values)
+        values = [v if v.shape[1] == width else
+                  np.pad(v, ((0, 0), (0, width - v.shape[1])), constant_values=np.nan)
+                  for v in values]
+        status = [c if c.shape[1] == width else
+                  np.pad(c, ((0, 0), (0, width - c.shape[1]))) for c in status]
+        self.has_accelerometry = True
+        self._userid = np.concatenate(userid)
+        self._x = np.vstack(values)
+        self._categ = np.vstack(status).astype(np.int8)
+        self._df = self._df.loc[self._userid]
+        log(f"Accelerometry: {', '.join(loaded)}")
+
+
+    def column_values(self, name, default=np.nan):
+        """
+        Values of a column by its name, whatever topic it sits under
+
+        Parameters
+        ----------
+        name : str
+            Column name, e.g. "Survey" or "Season of year"
+        default : object, default numpy.nan
+            What to return when the table has no such column
+
+        Returns
+        -------
+        ndarray
+            Column values, or an array of `default`
+
+        """
+        for topic, column in self._df.columns:
+            if column == name:
+                return self._df[(topic, column)].to_numpy(copy=True)
+        return np.full(len(self._df), default)
+
+
+    def variable_type(self, name):
+        """
+        What kind of values a column holds, from the codebook
+
+        Parameters
+        ----------
+        name : str
+            Column name, e.g. "Age"
+
+        Returns
+        -------
+        str
+            "Continuous", "Categorical", "Binary", "Flag", "Text" or "Unknown".
+            A column the codebook does not know (a computed one, such as
+            "Insurance medical (any)") is read from its values instead
+
+        """
+        if name in self._meta:
+            return self._meta[name]["type"]
+        values = self._df[self.column_to_category_column(name)] \
+            if name in self.columns() else None
+        if values is None:
+            return "Unknown"
+        if values.dtype.kind not in "fiub":
+            return "Text"
+        unique = values.dropna().unique()
+        if set(unique) <= {0.0, 1.0}:
+            return "Binary"
+        return "Continuous" if len(unique) > 12 else "Categorical"
+
+
+    def truncated(self, name=None):
+        """
+        Which columns have a truncated end, and which end
+
+        NHANES reports everybody older than 80 as 80, a laboratory result below
+        the detection limit as a fill value, and so on. The values are usable
+        numbers, but the tail of the distribution is not real: a mean is right,
+        a 95th percentile or a maximum is not.
+
+        Parameters
+        ----------
+        name : str or None, default None
+            Column name; None - every truncated column
+
+        Returns
+        -------
+        str or dict
+            "top", "bottom", "bottom,top" or "" for one column, or
+            {name: which end} for all of them
+
+        Example
+        -------
+        >>> nhanes = pynhanes.NhanesLoader()
+        >>> nhanes.truncated("Age")
+        'top'
+
+        """
+        if name is not None:
+            return self._meta.get(name, {}).get("truncated", "")
+        return {n: m["truncated"] for n, m in self._meta.items() if m["truncated"]}
+
+
+    def encode(self, names=None, onehot=True):
+        """
+        Table of numbers ready for scikit-learn, one column per feature
+
+        Continuous and Yes/No columns are taken as they are, categorical ones
+        are spread into one column per answer ("Ethnicity = Mexican American"),
+        and text columns are left out. Which is which comes from the codebook
+        column "Type".
+
+        Parameters
+        ----------
+        names : list or None, default None
+            Columns to encode; None - all of them
+        onehot : bool, default True
+            Spread categorical columns into one column per answer; False -
+            keep the answer codes as numbers
+
+        Returns
+        -------
+        DataFrame
+            One row per participant, one column per feature
+
+        Example
+        -------
+        >>> nhanes = pynhanes.NhanesLoader()
+        >>> x = nhanes.encode(["Age", "Gender", "Ethnicity"])
+
+        """
+        names = list(self.columns()) if names is None else list(names)
+        parts, skipped = {}, []
+        for name in names:
+            if name not in self.columns():
+                skipped.append(name)
+                continue
+            values = self._df[self.column_to_category_column(name)]
+            kind = self.variable_type(name)
+            if kind == "Text" and not (onehot and name in ("Survey", "Season of year")):
+                skipped.append(name)
+                continue
+            if kind in ("Categorical", "Flag") or values.dtype.kind not in "fiub":
+                if not onehot:
+                    parts[name] = pd.to_numeric(values, errors="coerce")
+                    continue
+                labels = self._meta.get(name, {}).get("labels", {})
+                readable = values.map(lambda v: labels.get(int(v), v)
+                                      if isinstance(v, float) and np.isfinite(v)
+                                      and int(v) in labels else v)
+                dummies = pd.get_dummies(readable.astype("object"), prefix=name,
+                                         prefix_sep=" = ", dtype=float)
+                dummies[values.isna()] = np.nan
+                for column in dummies.columns:
+                    parts[column] = dummies[column]
+                continue
+            parts[name] = values.astype(float)
+        if skipped:
+            warnings.warn(f"{len(skipped)} column(s) hold text and are left out of encode(): "
+                          f"{', '.join(skipped[:6])}")
+        return pd.DataFrame(parts, index=self._df.index)
+
+
     def column_to_category_column(self, column):
         """
         Get (category, column) by column name
@@ -210,8 +590,6 @@ class NhanesLoader():
         cols = np.array(self._df.columns.to_list()).T
         dct = dict(zip(cols[1], cols[0]))
         return (dct[column], column)
-
-
 
 
     def userdata(self, field, cond=None, userid=None):
@@ -280,7 +658,12 @@ class NhanesLoader():
             nan = np.clip(int(100 * nan / len(val)), 1, 100) if nan else 0
             nan = f"-- {nan}% NaN" if nan else ""
             unique = np.unique(val)
+            name = column[-1]
+            kind = self.variable_type(name)
+            end = self.truncated(name)
+            end = f" -- {end} of the range is truncated" if end else ""
             print(col)
+            print(f"{kind}{end}")
             print(unique, nan)
             if len(unique) <= 10 and codebook is not None:
                 dct = codebook.dict[column[-1]]
@@ -310,10 +693,15 @@ class NhanesLoader():
         """
         np.random.seed(seed)
         user_year = self.survey
-        user_season = self._df[("Demographic", "Season of year")].values
+        user_season = self.column_values("Season of year")
+        if user_season.dtype.kind not in "fiub":
+            user_season = np.where(pd.isna(user_season), 1.0,
+                                   np.where(np.char.lower(user_season.astype(str)) == "summer",
+                                            2.0, 1.0))
+        user_season = user_season.astype(float)
         user_season[~np.isfinite(user_season)] = 1
-        idate_min = datetime.strptime(f"{user_year.min()}", "%Y").toordinal()
-        idate_max = datetime.strptime(f"{user_year.max()+2}", "%Y").toordinal()
+        idate_min = datetime.strptime(f"{int(np.nanmin(user_year))}", "%Y").toordinal()
+        idate_max = datetime.strptime(f"{int(np.nanmax(user_year)) + 2}", "%Y").toordinal()
         idate = np.arange(idate_min, idate_max)
         weekday = (idate + 6) % 7 + 1
         idate = idate[weekday == 1] # Keep only Mondays
@@ -395,10 +783,11 @@ class CodeBook():
 
     Parameters
     ----------
-    path_csv : str, default '~/work/NHANES/CSV/nhanes_userdata.csv'
-        Path to user data csv file
-    variables : list or str, default '~/work/NHANES/CSV/nhanes_variables.json'
-        List or path to .json containing requested variable or category codes / combined names
+    path_csv : str, default '~/data/NHANES/CSV/nhanes_codebook.csv'
+        Path to the codebook csv file
+    variables : list or str, default '~/data/NHANES/CSV/nhanes_variables.json'
+        List or path to .json containing requested variable or category codes / combined
+        names. A path that is not there falls back to the file that ships with pynhanes
 
 
     Example
@@ -407,8 +796,8 @@ class CodeBook():
     >>> codebook = pynhanes.CodeBook("./CSV/nhanes_codebook.csv")
 
     """
-    def __init__(self, path_csv="~/work/NHANES/CSV/nhanes_codebook.csv",
-                       variables="~/work/NHANES/CSV/nhanes_variables.json"):
+    def __init__(self, path_csv="~/data/NHANES/CSV/nhanes_codebook.csv",
+                       variables="~/data/NHANES/CSV/nhanes_variables.json"):
         self._load_codebook(path_csv)
         self._load_variables(variables)
 
@@ -447,16 +836,25 @@ class CodeBook():
         Parameters
         ----------
         path : str
-            Path to user data csv, e.g. '~/work/NHANES/CSV/nhanes_userdata.csv'
+            Path to user data csv, e.g. '~/data/NHANES/CSV/nhanes_userdata.csv'
 
         """
         fname = os.path.expanduser(path)
         df = pd.read_csv(fname, delimiter=";", index_col=0)
-        df["Int Codebook"] = [self._text_to_dict(c, True) for c in df["Codebook"].values]
+        # the labels of the parsed table, not of the file NHANES publishes:
+        # "Refused" and "Don't know" are empty by then, and No is 0 rather
+        # than 2, so offering them would name values that cannot occur
+        source = "Recoded Codebook" if "Recoded Codebook" in df.columns else "Codebook"
+        df["Int Codebook"] = [self._text_to_dict(c, True) for c in df[source].values]
         df["Codebook"] = [self._text_to_dict(c, False) for c in df["Codebook"].values]
         self._codebook = df["Int Codebook"].to_dict()
-        self._data = df[["Name", "Combined Name", "Categories", "Category", "Category Name", 
-                         "Combined Category", "Component", "Codebook", "Int Codebook", "Recode"]]
+        columns = ["Name", "Combined Name", "Categories", "Category", "Category Name",
+                   "Combined Category", "Component", "Type", "Truncated", "Core",
+                   "Codebook", "Int Codebook", "Recoded Codebook",
+                   "Surveys", "Availability"]
+        columns += [c for c in df.columns if c[:2] in ("19", "20")]      # one per survey
+        # "Type", "Truncated" and "Core" were added in 1.0.0: an older codebook has none
+        self._data = df[[c for c in columns if c in df.columns]]
         return
 
 

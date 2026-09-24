@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pynhanes"
+version = "1.0.0"
+description = "Python parser and scraper for NHANES accelerometry and questionnaire"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT License" }
+authors = [{ name = "Tim Pyrkov", email = "tim.pyrkov@gmail.com" }]
+keywords = ["NHANES", "accelerometry", "epidemiology", "public health", "survey"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering",
+    "Intended Audience :: Science/Research",
+]
+# Only what the download, scrape and parse pipeline needs. The plotting helpers
+# in pynhanes/utils.py and the .json-with-comments reader are optional and are
+# imported inside try/except - see [project.optional-dependencies].
+dependencies = [
+    "numpy",
+    "pandas",
+    "requests",
+    "beautifulsoup4",
+    "lxml",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+plot = [
+    "scipy",
+    "matplotlib",
+    "seaborn",
+    "statannotations",
+    "jsoncomment",
+]
+
+[project.urls]
+Homepage = "https://github.com/timpyrkov/pynhanes"
+Documentation = "https://pynhanes.readthedocs.io"
+Source = "https://github.com/timpyrkov/pynhanes"
+Issues = "https://github.com/timpyrkov/pynhanes/issues"
+
+[project.scripts]
+pynhanes-downloader = "pynhanes.downloader:main"
+pynhanes-scraper = "pynhanes.scraper:main"
+pynhanes-parser = "pynhanes.parser:main"
+pynhanes-activity = "pynhanes.activity:main"
+pynhanes-wgetxpt = "pynhanes.wgetxpt:main"
+# released before 1.0.0 under this name, kept so it keeps working
+pywgetxpt = "pynhanes.wgetxpt:main"
+
+[tool.setuptools.packages.find]
+include = ["pynhanes*"]
+
+# the codebook snapshot and the curated variables file: the same files
+# pynhanes-scraper writes, gzipped (1.7 MB), so that a fresh install has a
+# codebook without reading 1603 documentation pages first
+[tool.setuptools.package-data]
+pynhanes = ["data/*.csv.gz", "data/*.json"]

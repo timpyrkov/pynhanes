@@ -1,30 +1,49 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
+"""
+The download script of pynhanes 0.0.x, kept for the people who use it
+
+It takes one data file code and a folder, exactly as before, and downloads that
+data file for every survey. What changed is the inside: instead of calling
+`wget` once per survey and per guessed address, it hands the work to
+pynhanes.downloader, which reads the NHANES file listing, so it also
+finds the surveys added after 2019, skips files already present, resumes an
+interrupted download and never writes a half file.
+
+    pynhanes-wgetxpt DEMO -o XPT
+
+pynhanes-downloader does the same thing with more control:
+
+    pynhanes-downloader -d DEMO -o XPT
+
+"""
 
 import os
 import argparse
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.description = f"example: {parser.prog} DEMO -o {os.path.expanduser('~/Downloads/XPT')}"
-    parser.add_argument("xpt", help="name of xpt file")
-    parser.add_argument("-o",  "--out", default="XPT", help="path to output folder")
-    args = parser.parse_args()
+from pynhanes import downloader
 
-    survey_years = [f"{y-1}-{y}" for y in range(2000,2020)[::2]]
-    survey_suffix = [""] + [f"_{chr(65 + i)}" for i in range(1,10)]
-    survey_suffix = dict(zip(survey_years, survey_suffix))
 
-    path = os.path.expanduser(args.out)
-    if not os.path.isdir(path):
-        os.makedirs(path)
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="pynhanes-wgetxpt")
+    parser.description = (f"Download one NHANES data file for every survey. "
+                          f"example: {parser.prog} DEMO -o "
+                          f"{os.path.expanduser('~/Downloads/XPT')}")
+    parser.epilog = ("pynhanes-downloader -d DEMO -o XPT does the same, and takes "
+                     "several data files, selected surveys and components.")
+    parser.add_argument("xpt", help="name of xpt file, without the survey suffix, e.g. DEMO")
+    parser.add_argument("-o", "--out", default="XPT", help="path to output folder")
+    args = parser.parse_args(argv)
 
-    for years in survey_years:
-        print(years)
-        suffix = survey_suffix[years]
-        #cmd = f"wget https://wwwn.cdc.gov/Nchs/Nhanes/{years}/{args.xpt}{suffix}.XPT -P {path}" # Obsolete path
-        cmd = f"wget https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/{years[:4]}/DataFiles/{args.xpt}{suffix}.xpt -P {path}"
-        os.system(cmd)
+    try:
+        download_plan = downloader.plan(output=args.out, data_files=args.xpt)
+    except (ValueError, RuntimeError) as error:
+        print(error)
+        return 1
+    print(download_plan.summary())
+    downloader.run(download_plan)
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -127,3 +127,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Sphinx: generated notebook copies
+docs/notebook/
+.DS_Store
+.claude/
+
+# working folders the pipeline writes into
+CSV/
+XPT/
+NPZ/

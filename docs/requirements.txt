@@ -1,0 +1,17 @@
+# building the documentation
+sphinx
+sphinx-rtd-theme
+myst-parser
+nbsphinx
+ipykernel
+# running the example notebooks during the build
+numpy
+pandas
+scipy
+matplotlib
+requests
+beautifulsoup4
+lxml
+tqdm
+scikit-learn
+lifelines
