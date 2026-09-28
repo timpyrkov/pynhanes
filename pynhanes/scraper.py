@@ -1160,6 +1160,177 @@ def snapshot_info():
         return {}
 
 
+# Sample weights are not published as a table: each NHANES data file names the
+# weight to use in the prose of its documentation, and only some of them do.
+# weights_to_pandas() rebuilds the table from four signals, strongest first.
+# It cannot be fully automated, which is why pynhanes ships a reviewed copy -
+# see the "Sample weights" page of the documentation.
+
+# a handful of questionnaires are asked at the examination centre rather than at
+# home, so they need the exam weight although their component says Questionnaire.
+# Detected by checking whether every participant in the file was examined, which
+# needs the .xpt; this list is the answer for the surveys of the shipped snapshot.
+MEC_QUESTIONNAIRES = {"ALQ", "DPQ", "DUQ", "HSQ"}
+
+# these files are asked at home in some surveys and in the MEC in others
+MEC_QUESTIONNAIRE_EXCEPT = {("HSQ", "2001-2002"), ("HSQ", "2003-2004")}
+
+PREPANDEMIC_WEIGHT = {"WTINT2YR": "WTINTPRP", "WTMEC2YR": "WTMECPRP",
+                      "WTSAF2YR": "WTSAFPRP", "WTDRD1": "WTDRD1PP",
+                      "WTDR2D": "WTDR2DPP"}
+
+STANDARD_WEIGHTS = {"WTINT2YR", "WTMEC2YR", "WTINTPRP", "WTMECPRP"}
+
+
+def _is_four_year_weight(code, name):
+    """True for the 1999-2002 four-year variant of a weight"""
+    return bool(re.search(r"4 ?Y(ea)?r", str(name), re.I) or re.search(r"4YR$|4Y$", str(code)))
+
+
+def _weights_in_files(availability):
+    """Weight variables that each (data file, survey) ships inside itself"""
+    weights = availability[availability["Code"].astype(str).str.startswith("WT")]
+    weights = weights[~weights["Name"].astype(str).str.contains(
+        r"Rep |Replicate|Jack ?Knife", case=False, na=False)]
+    keep = [not _is_four_year_weight(c, n)
+            for c, n in zip(weights["Code"], weights["Name"])]
+    weights = weights[pd.Series(keep, index=weights.index)]
+    return weights.groupby(["Data File", "Survey"])["Code"].apply(
+        lambda codes: sorted(set(codes))).to_dict()
+
+
+def _pick_weight(codes, data_file):
+    """Choose one weight when a data file ships several"""
+    if len(codes) == 1:
+        return codes[0]
+    # DEMO is where the weights live; its own variables are interview variables
+    if data_file == "DEMO":
+        return next((c for c in codes if c.startswith("WTINT")), codes[0])
+    # dietary files carry the day-one and the two-day weight; day one is the default
+    day_one = [c for c in codes if c.startswith("WTDRD1")]
+    if day_one:
+        return day_one[0]
+    return sorted(codes)[0]
+
+
+def _weight_named_on_page(data_file, survey, known=None):
+    """
+    The weight a documentation page names, when it names exactly one subsample one
+
+    Pages that mention only WTINT2YR or WTMEC2YR are ignored: the sentence is
+    usually "use WTMEC2YR if you combine these with examination data", which does
+    not say the file itself needs it.
+
+    A name that is not a real NHANES variable is ignored as well. The prose is
+    written by hand and sometimes misspells the weight -- the 1999-2000 lipid
+    pages ask for "WTSMEC2YR", which has never existed.
+    """
+    stem = data_file if survey != "2017-2020" else "P_" + data_file
+    suffix = {"1999-2000": "", "2001-2002": "_B", "2003-2004": "_C", "2005-2006": "_D",
+              "2007-2008": "_E", "2009-2010": "_F", "2011-2012": "_G", "2013-2014": "_H",
+              "2015-2016": "_I", "2017-2018": "_J", "2017-2020": "", "2021-2023": "_L"}
+    path = os.path.join(downloader.listing_cache_dir(), "pages",
+                        f"{stem}{suffix.get(survey, '')}.html.gz")
+    if not os.path.exists(path):
+        return None
+    try:
+        with gzip.open(path, "rb") as stream:
+            text = re.sub(r"<[^>]+>", " ", stream.read().decode("utf8", "ignore"))
+    except OSError:
+        return None
+    found = {w for w in re.findall(r"\bWT[A-Z0-9_]{3,8}\b", text) if "REP" not in w}
+    found = {w for w in found if not _is_four_year_weight(w, "")}
+    if len(found) != 1:
+        return None
+    weight = found.pop()
+    if weight in STANDARD_WEIGHTS or (known is not None and weight not in known):
+        return None
+    return weight
+
+
+def weights_to_pandas(availability, pages=True, datafiles=None):
+    """
+    Build the table of which sample weight each NHANES data file needs
+
+    Rows are data file codes, columns are surveys, and each cell names the NHANES
+    weight variable to use for every variable in that file. Decided, strongest
+    signal first:
+
+    1. the file ships its own weight -- a file needing a special weight carries
+       it inside, so TRIGLY carries WTSAF2YR and DR1TOT carries WTDRD1;
+    2. its documentation page names exactly one subsample weight;
+    3. it is one of the questionnaires asked in the examination centre;
+    4. its component -- Examination and Laboratory take the exam weight,
+       everything else the interview weight.
+
+    Parameters
+    ----------
+    availability : DataFrame
+        The table of availability_to_pandas(), one row per variable and survey
+    pages : bool, default True
+        Use the documentation pages kept by --store, when they are there
+    datafiles : DataFrame, optional
+        The table of datafiles_to_pandas(); the shipped one by default. It adds
+        the physical activity monitor files, which availability_to_pandas()
+        leaves out because they hold no variables to count
+
+    Returns
+    -------
+    DataFrame
+        One row per data file, one column per survey
+
+    """
+    if "Code" not in availability.columns:
+        availability = availability.reset_index()
+    own = _weights_in_files(availability)
+    known = set(availability.loc[availability["Code"].astype(str).str.startswith("WT"), "Code"])
+    pairs = availability[["Data File", "Survey", "Component"]].drop_duplicates()
+    surveys = [s for s in downloader.SURVEY_ORDER if s in set(availability["Survey"])] \
+        if hasattr(downloader, "SURVEY_ORDER") else sorted(set(availability["Survey"]))
+
+    table = {}
+    for row in pairs.itertuples(index=False):
+        data_file, survey, component = row[0], row[1], row[2]
+        if (data_file, survey) in own:
+            weight = _pick_weight(own[(data_file, survey)], data_file)
+        else:
+            named = _weight_named_on_page(data_file, survey, known) if pages else None
+            if named:
+                weight = named
+            elif (data_file in MEC_QUESTIONNAIRES
+                  and (data_file, survey) not in MEC_QUESTIONNAIRE_EXCEPT):
+                weight = "WTMEC2YR"
+            elif component in ("Examination", "Laboratory"):
+                weight = "WTMEC2YR"
+            else:
+                weight = "WTINT2YR"
+        if survey == "2017-2020":
+            weight = PREPANDEMIC_WEIGHT.get(weight, weight)
+        table.setdefault(data_file, {})[survey] = weight
+
+    # the accelerometry files carry no variables, so availability never sees them.
+    # The monitor is handed out at the examination centre, so they take the exam
+    # weight -- which lives in DEMO, not in the multi-gigabyte files themselves.
+    if datafiles is None:
+        datafiles = read_snapshot("datafiles")
+    if datafiles is not None and "Activity" in datafiles.columns:
+        activity = datafiles if "Data File" in datafiles.columns else datafiles.reset_index()
+        activity = activity[activity["Activity"].astype(bool)]
+        for data_file, first, last in zip(activity["Data File"], activity["First"],
+                                          activity["Last"]):
+            first, last = str(first), str(last)
+            if first not in surveys or last not in surveys:
+                continue
+            span = surveys[surveys.index(first):surveys.index(last) + 1]
+            for survey in span:
+                weight = "WTMECPRP" if survey == "2017-2020" else "WTMEC2YR"
+                table.setdefault(data_file, {}).setdefault(survey, weight)
+
+    out = pd.DataFrame(table).T.reindex(columns=surveys).sort_index()
+    out.index.name = "Data File"
+    return out
+
+
 def read_snapshot(kind="codebook"):
     """
     Read a table of the snapshot shipped with pynhanes
@@ -1167,7 +1338,7 @@ def read_snapshot(kind="codebook"):
     Parameters
     ----------
     kind : str, default "codebook"
-        "codebook", "availability" or "datafiles"
+        "codebook", "availability", "datafiles" or "weights"
 
     Returns
     -------
@@ -1194,7 +1365,7 @@ def write_snapshot(output, kind="codebook"):
     output : str
         Path of the .csv to write
     kind : str, default "codebook"
-        "codebook", "availability" or "datafiles"
+        "codebook", "availability", "datafiles" or "weights"
 
     Returns
     -------
@@ -2256,7 +2427,8 @@ def _write_snapshot_files(args, info, log, quiet):
         "Add --refresh to read the NHANES website instead (about 5 minutes)")
     extra = {}
     for kind, given, default in (("availability", args.availability, "nhanes_availability.csv"),
-                                 ("datafiles", args.datafiles, "nhanes_datafiles.csv")):
+                                 ("datafiles", args.datafiles, "nhanes_datafiles.csv"),
+                                 ("weights", args.weights, "nhanes_weights_raw.csv")):
         if given is None:
             continue
         path = _beside(args.output, given, default)
@@ -2306,6 +2478,12 @@ def main(argv=None):
                         help="also write every data file NHANES publishes - its title, the "
                              "surveys it spans and its size (default file: nhanes_datafiles.csv "
                              "next to the codebook; --disksizes is the old name of this option)")
+    parser.add_argument("--weights", metavar="FILE", nargs="?", const="",
+                        help="also write which sample weight each data file needs, one row per "
+                             "data file and one column per survey (default file: "
+                             "nhanes_weights_raw.csv next to the codebook). NHANES does not "
+                             "publish this as a table, so it is derived - see the Sample weights "
+                             "page of the documentation before trusting a new survey")
     parser.add_argument("--store", action="store_true",
                         help="keep documentation pages in ~/.cache/pynhanes and reuse them")
     parser.add_argument("--refresh", action="store_true",
@@ -2365,6 +2543,15 @@ def main(argv=None):
             log(f"Saved {len(sizes)} data files ({sizes['GB'].sum():.1f} GB in total, "
                 f"{sizes.loc[sizes['Core'], 'GB'].sum():.1f} GB of them core) to {path}")
             extra["datafiles"] = path
+        if args.weights is not None:
+            path = _beside(args.output, args.weights, "nhanes_weights_raw.csv")
+            # the documentation pages are read from the store whenever it has them,
+            # whether or not this run was asked to keep them
+            table = weights_to_pandas(scraper.availability_to_pandas())
+            table.to_csv(path, sep=";")
+            log(f"Saved the weight of {len(table)} data files to {path}")
+            log("Derived, not published by NHANES - review a newly released survey by hand")
+            extra["weights"] = path
         if quiet:
             print(_json.dumps({"output": args.output, "variables": len(df),
                                "data_files": int(df["Category"].nunique()),

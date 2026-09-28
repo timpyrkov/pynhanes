@@ -59,6 +59,15 @@ CODEBOOK = [
      {"0 to 326": "Months", ".": "Missing"}, False),
     ("MORTSTAT", "Final mortality status", "Mortality event", "MORT", "Mortality",
      {"0": "Assumed alive", "1": "Assumed deceased", ".": "Missing"}, False),
+    ("PERMTH_EXM", "Months of follow-up from exam", "Mortality tte from exam", "MORT", "Mortality",
+     {"0 to 326": "Months", ".": "Missing"}, False),
+    ("UCOD_LEADING", "Underlying leading cause of death", "Mortality cause", "MORT", "Mortality",
+     {"1": "Diseases of heart", "7": "Diabetes mellitus", "10": "All other causes",
+      ".": "Missing"}, False),
+    ("DIABETES", "Diabetes flag from multiple cause of death", "Mortality cause diabetes", "MORT",
+     "Mortality", {"0": "No - Condition not listed as a multiple cause of death",
+                   "1": "Yes - Condition listed as a multiple cause of death", ".": "Missing"},
+     False),
     ("RXDCOUNT", "Number of medicines", "Medicines", "RXQ_RX", "Medications",
      {"1 to 20": "Range of Values", ".": "Missing"}, False),
     ("SLQ300", "Usual sleep time", "Sleep time", "SLQ", "Sleep",
@@ -129,7 +138,8 @@ def xpt_folder(tmp_path, monkeypatch):
         (folder / name).write_bytes(b"not a real xpt, read_sas is patched")
     (folder / "NHANES_1999_2000_MORT_2019_PUBLIC.dat").write_text(
         f"{'1':>14s}1100100.....    1000    1000120120\n"
-        f"{'2':>14s}1000000.....    1000    1000240240\n")
+        f"{'2':>14s}10  ........    1000    1000240240\n"
+        f"{'3':>14s}1100711.....    1000    1000 60 58\n")
     monkeypatch.setattr(pr.pd, "read_sas",
                         lambda path, format=None: DATA[os.path.basename(path)].copy())
     return str(folder)
@@ -201,6 +211,37 @@ def test_mortality_is_read(xpt_folder, codebook_csv):
                                           "Mortality tte": ["PERMTH_INT"]})
     assert df[("Mortality", "Mortality event")].loc[1] == 1
     assert df[("Mortality", "Mortality tte")].loc[1] == 10.0      # 120 months -> years
+
+
+def test_cause_of_death_keeps_the_linked_file_coding(xpt_folder, codebook_csv):
+    # the linked file codes its flags 1 = Yes, 0 = No already - nothing may
+    # recode them, and a survivor has no cause and no flag
+    df = parse(xpt_folder, codebook_csv, {"Mortality event": ["MORTSTAT"],
+                                          "Mortality cause": ["UCOD_LEADING"],
+                                          "Mortality cause diabetes": ["DIABETES"],
+                                          "Mortality tte from exam": ["PERMTH_EXM"]})
+    df = df["Mortality"]
+    assert df.loc[3, "Mortality cause"] == 7
+    assert df.loc[3, "Mortality cause diabetes"] == 1
+    assert df.loc[1, "Mortality cause diabetes"] == 0
+    assert np.isnan(df.loc[2, "Mortality cause"])
+    assert np.isnan(df.loc[2, "Mortality cause diabetes"])
+    assert df.loc[3, "Mortality tte from exam"] == pytest.approx(58 / 12, abs=0.01)
+
+
+def test_mortality_weight_follows_the_linkage():
+    mapping = {"Mortality event": ["MORTSTAT"], "Mortality cause": ["UCOD_LEADING"],
+               "Mortality tte from exam (yr)": ["PERMTH_EXM"]}
+    weights = pd.DataFrame({"1999-2000": ["WTINT2YR"], "2017-2020": ["WTINTPRP"],
+                            "2021-2023": ["WTINT2YR"]}, index=pd.Index(["DEMO"], name="Data File"))
+    availability = pd.DataFrame({"Code": ["RIDAGEYR"] * 3, "Data File": ["DEMO"] * 3,
+                                 "Survey": ["1999-2000", "2017-2020", "2021-2023"],
+                                 "Valid": [10, 10, 10]})
+    table = pr.weights_dict(mapping, weights, availability)
+    assert table.loc["Mortality cause", "1999-2000"] == "Sample weight (interview)"
+    assert table.loc["Mortality tte from exam (yr)", "1999-2000"] == "Sample weight (exam)"
+    # neither the pre-pandemic release nor 2021-2023 is linked to the death index
+    assert table.loc["Mortality event"].drop("1999-2000").isna().all()
 
 
 # ---------------------------------------------------------------------------

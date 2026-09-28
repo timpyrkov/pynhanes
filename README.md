@@ -92,7 +92,7 @@ pynhanes-downloader -o XPT             # core preset, ~0.8 GB
 ```
 
 **Then parse.** One row per participant, one column per variable name, all surveys stacked. With
-no `-v` it uses the 341 variables curated in `pynhanes/data/nhanes_variables.json`, which ships
+no `-v` it uses the 351 variables curated in `pynhanes/data/nhanes_variables.json`, which ships
 with the package.
 
 ```
@@ -228,7 +228,7 @@ using for the latest one - it has to be narrowed with `-s` or `-d`.
 ## Parsing
 
 `pynhanes-parser` turns the downloaded files into one table - one row per participant, one column
-per variable, all surveys stacked (113249 participants, 348 variables with the shipped list).
+per variable, all surveys stacked (113249 participants, 358 variables with the shipped list).
 
 
 | option                        | meaning                                                                                                                                                                                  |
@@ -255,7 +255,7 @@ empty - carries a provenance line, so a table that has been copied away from its
 what it holds:
 
 ```
-pynhanes 1.0.0 | names | recoded | derived | 2026-09-24;Demographic;Demographic
+pynhanes 1.0.1 | names | recoded | derived | 2026-09-28;Demographic;Demographic
 ;Age;Gender
 SEQN;;
 ```
@@ -300,3 +300,20 @@ pynhanes parses only the minute-level files. The hourly (`PAXHR`) and daily (`PA
 NHANES also publishes are not read as data - `PAXDAY` is used only for the start time of the first
 day, and `PAXHD` only for the monitor status.
 
+
+
+# Roadmap
+
+Planned, not yet implemented. Open an issue if one of these matters to you - it moves things up
+the list.
+
+- **Raw 80 Hz accelerometry (`PAX80`).** NHANES has begun publishing the unaggregated sensor
+  output, three axes at 80 samples per second, alongside the minute-level summaries pynhanes
+  already parses. It is a different order of magnitude - a single participant's week is larger
+  than the whole minute-level release - so downloading and parsing it needs its own streaming
+  path rather than an extra flag on `pynhanes-activity`. Planned for a future version.
+- **A survey-design helper.** pynhanes ships the weights, PSU and strata
+  (see [Sample weights](https://pynhanes.readthedocs.io/en/latest/weights.html)) but no
+  estimator. Design-based means and regressions are left to `samplics` or R's `survey`.
+- **Accelerometry weights.** `CSV/nhanes_activity.csv` carries no weight column; join it to the
+  parsed table on `SEQN` and use the examination weight.

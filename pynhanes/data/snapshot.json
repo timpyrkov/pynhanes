@@ -12,6 +12,10 @@
   "datafiles": {
    "name": "nhanes_datafiles.csv.gz",
    "bytes": 13149
+  },
+  "weights": {
+   "name": "nhanes_weights_raw.csv.gz",
+   "bytes": 3023
   }
  },
  "variables": 12774,

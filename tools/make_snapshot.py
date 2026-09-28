@@ -4,7 +4,7 @@ Refresh the codebook snapshot shipped with pynhanes, from freshly scraped files
 
 Run before every release, after a full scrape:
 
-    pynhanes-scraper -o CSV/nhanes_codebook.csv --availability --datafiles --refresh --store
+    pynhanes-scraper -o CSV/nhanes_codebook.csv --availability --datafiles --weights --refresh --store
     python tools/make_snapshot.py CSV
 
 It gzips the three tables into pynhanes/data/ and writes snapshot.json with the
@@ -18,7 +18,8 @@ TARGET = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))
                       "pynhanes", "data")
 FILES = {"codebook": "nhanes_codebook.csv",
          "availability": "nhanes_availability.csv",
-         "datafiles": "nhanes_datafiles.csv"}
+         "datafiles": "nhanes_datafiles.csv",
+         "weights": "nhanes_weights_raw.csv"}
 
 os.makedirs(TARGET, exist_ok=True)
 info = {"scraped": datetime.date.today().isoformat(), "files": {}}

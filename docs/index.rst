@@ -39,6 +39,12 @@ Documentation
 
 .. toctree::
    :maxdepth: 2
+   :caption: Sample weights
+
+   weights
+
+.. toctree::
+   :maxdepth: 2
    :caption: Accelerometry
 
    activity

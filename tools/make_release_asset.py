@@ -12,8 +12,10 @@ replacing a file does not rewrite history.
     python tools/make_release_asset.py                    # the default set
     python tools/make_release_asset.py FILE [FILE ...]    # whichever you name
 
-A .csv is gzipped into dist/; a .npz is already compressed and is taken as it
-is. Nothing is uploaded: run the printed command yourself when you are ready.
+A .csv is gzipped into release/; a .npz is already compressed and is taken as
+it is. Not dist/, which is where `python -m build` puts the wheel - a
+`twine upload dist/*` must never find a data file there. Nothing is uploaded:
+run the printed command yourself when you are ready.
 """
 import gzip
 import os
@@ -24,10 +26,18 @@ TAG = "data-v1"
 REPO = "timpyrkov/pynhanes"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.expanduser("~/data/NHANES")
+# nhanes_weights_dict.csv travels with the parsed data: the data carries the
+# weight columns, the dictionary says which one each variable needs
 DEFAULT = [f"{DATA}/CSV/nhanes_userdata.csv",
+           f"{DATA}/CSV/nhanes_weights_dict.csv",
+           f"{DATA}/CSV/nhanes_activity.csv",
            f"{DATA}/NPZ/nhanes_steps.npz",
            f"{DATA}/NPZ/nhanes_counts.npz",
            f"{DATA}/NPZ/nhanes_triax.npz"]
+# Tables the parser writes carry a provenance line in their corner cell and are
+# refused without one. nhanes_activity.csv has none: its first cell is the SEQN
+# column, which readers - and pynhanes-activity itself - look up by name.
+STAMPED = {"nhanes_userdata.csv", "nhanes_weights_dict.csv"}
 # GitHub refuses a single release asset above this
 MAX_ASSET = 2 * 1024 ** 3
 
@@ -66,12 +76,12 @@ def main(argv=None):
         print("ERROR: not found:\n  " + "\n  ".join(missing))
         return 1
     for source in sources:
-        if source.endswith(".csv") and provenance(source) is None:
+        if os.path.basename(source) in STAMPED and provenance(source) is None:
             print(f"ERROR: '{source}' carries no provenance line - parse it again with "
                   f"pynhanes-parser, so that the release says what it holds")
             return 1
 
-    into = os.path.join(ROOT, "dist")
+    into = os.path.join(ROOT, "release")
     os.makedirs(into, exist_ok=True)
     assets, total = [], 0
     for source in sources:

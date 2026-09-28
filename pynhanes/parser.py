@@ -79,6 +79,11 @@ THIRD_OPTION = {
 # Values that mean something else than the number they are, in variables whose
 # other values are ordinary numbers. NHANES writes them in each variable's own
 # words, so no rule can recognise them
+# SAS stores "not in this subsample" as a zero weight, which the XPORT reader
+# renders as 5.4e-79.  It is harmless in a weighted average but wrecks any
+# filter, ratio or logarithm, so it is forced back to a true zero.
+WEIGHT_FLOOR = 1e-9
+
 SENTINELS = {
     "DED120": {3333: np.nan},               # does not work or go to school
     "DED125": {3333: np.nan},
@@ -762,6 +767,153 @@ def apply_sentinels(data, log=print):
     return data
 
 
+# the weight columns pynhanes writes, keyed by the NHANES weight they come from
+WEIGHT_COLUMN = {"WTINT2YR": "Sample weight (interview)",
+                 "WTINTPRP": "Sample weight (interview)",
+                 "WTMEC2YR": "Sample weight (exam)", "WTMECPRP": "Sample weight (exam)",
+                 "WTPH2YR": "Sample weight (blood draw)",
+                 "WTSAF2YR": "Sample weight (fasting)", "WTSAFPRP": "Sample weight (fasting)",
+                 "WTDRD1": "Sample weight (dietary)", "WTDRD1PP": "Sample weight (dietary)"}
+
+# the weight and design columns are not analysis variables, so they have no weight
+DESIGN_COLUMNS = ("Sample weight", "Survey PSU", "Survey strata")
+
+# Mortality comes from the linked NCHS files, not from an NHANES data file, so no
+# data file tells us its weight. Death is an outcome: the weight of a survival
+# model is set by its covariates, not by the outcome, and the interview weight is
+# the one valid for everyone linked. The follow-up counted from the examination
+# exists only for people who were examined, so it takes the exam weight.
+MORTALITY_WEIGHT = "Sample weight (interview)"
+MORTALITY_WEIGHT_BY_CODE = {"PERMTH_EXM": "Sample weight (exam)"}
+
+
+def _mortality_linked(survey):
+    """True if the public linked mortality file covers this survey
+
+    The same rule the downloader uses to fetch the files: the linkage runs to
+    MORTALITY_YEAR, and the pre-pandemic 2017-2020 release is not linked.
+    """
+    from pynhanes.downloader import MORTALITY_YEAR
+    try:
+        return survey != "2017-2020" and int(str(survey)[-4:]) <= MORTALITY_YEAR
+    except ValueError:
+        return False
+
+
+def weights_dict(mapping, weights=None, availability=None):
+    """
+    Build the table of which weight column each parsed variable needs
+
+    Rows are pynhanes variable names, columns are surveys, and each cell names one
+    of the weight columns written into nhanes_userdata.csv. The answer depends on
+    the survey, because NHANES moves things: general health was asked at home in
+    2001-2004 and in the examination centre otherwise, and the blood counts moved
+    onto their own blood-draw weight in 2021-2023.
+
+    A name built from codes that live in several data files takes the weight of
+    the file supplying the most values, since that is where most of the merged
+    column comes from. A cell holding a raw NHANES code rather than a column name
+    means pynhanes does not ship that weight; add it to your variables file.
+
+    Parameters
+    ----------
+    mapping : dict
+        Variable name -> list of NHANES codes, as read_variables() returns
+    weights : DataFrame, optional
+        The table of scraper.weights_to_pandas(); the shipped one by default
+    availability : DataFrame, optional
+        The table of scraper.availability_to_pandas(); the shipped one by default
+
+    Returns
+    -------
+    DataFrame
+        One row per variable, one column per survey
+
+    """
+    from pynhanes import scraper
+
+    if weights is None:
+        weights = scraper.read_snapshot("weights")
+    if availability is None:
+        availability = scraper.read_snapshot("availability")
+    if weights is None or availability is None:
+        raise ValueError("pynhanes ships no weights or availability table; "
+                         "pass them, or write them with pynhanes-scraper --weights")
+
+    if "Code" not in availability.columns:
+        availability = availability.reset_index()
+    surveys = [c for c in weights.columns]
+    where = {}
+    for code, survey, data_file, valid in zip(availability["Code"], availability["Survey"],
+                                              availability["Data File"], availability["Valid"]):
+        where.setdefault((code, survey), []).append((data_file, valid))
+    seen = {survey for _, survey in where}
+
+    table = {}
+    for name, codes in mapping.items():
+        if str(name).startswith(DESIGN_COLUMNS):
+            continue
+        codes = codes if isinstance(codes, list) else [codes]
+        if codes and all(c in MORTALITY_CODES for c in codes):
+            weight = MORTALITY_WEIGHT_BY_CODE.get(codes[0], MORTALITY_WEIGHT)
+            table[name] = {s: weight for s in surveys if s in seen and _mortality_linked(s)}
+            continue
+        for survey in surveys:
+            found = {}
+            for code in codes:
+                for data_file, valid in where.get((code, survey), []):
+                    if data_file not in weights.index:
+                        continue
+                    weight = weights.at[data_file, survey]
+                    if pd.notna(weight):
+                        found[weight] = found.get(weight, 0) + (valid or 0)
+            if found:
+                best = max(found, key=found.get)
+                table.setdefault(name, {})[survey] = WEIGHT_COLUMN.get(best, best)
+
+    out = pd.DataFrame(table).T.reindex(columns=surveys)
+    out = out.reindex([n for n in mapping if n in out.index])
+    out.index.name = "Variable"
+    return out
+
+
+def clean_weights(data, log=print):
+    """
+    Force the near-zero sample weights of people outside a subsample to zero
+
+    A participant who was interviewed but never examined has an exam weight of
+    zero, and one who was examined but did not fast has a zero fasting weight.
+    SAS writes those zeros in a form the XPORT reader turns into 5.4e-79, so
+    ``weight > 0`` keeps them and ``log(weight)`` returns nonsense.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Values, one column per variable code
+    log : callable, default print
+        Function to print messages
+
+    Returns
+    -------
+    DataFrame
+        Values with weights below WEIGHT_FLOOR set to zero
+
+    """
+    done = []
+    for column in data.columns:
+        if not str(column).startswith("WT") or data[column].dtype.kind not in "fiub":
+            continue
+        values = data[column].to_numpy(copy=True, dtype=float)
+        found = (values > 0) & (values < WEIGHT_FLOOR)
+        if found.any():
+            values[found] = 0.0
+            data[column] = values
+            done.append(f"{column} ({int(found.sum())})")
+    if done:
+        log(f"Zeroed the weight of people outside the subsample: {', '.join(done)}")
+    return data
+
+
 def recode_binary(data, codebook, third_option=True, log=print):
     """
     Recode Yes/No and Male/Female from 1/2 to 1/0, and map Yes/No variables
@@ -1309,6 +1461,9 @@ DERIVED = {
                  lambda v, raw, codes, book: _derive_blood_pressure(v, raw, codes)),
     "PERMTH_INT": ("Months of mortality follow-up converted to years (at least 0.1)",
                    lambda v, raw, codes, book: np.maximum(np.round(v / 12.0, 2), 0.1)),
+    "PERMTH_EXM": ("Months of mortality follow-up from the examination converted to years "
+                   "(at least 0.1)",
+                   lambda v, raw, codes, book: np.maximum(np.round(v / 12.0, 2), 0.1)),
 }
 
 
@@ -1678,6 +1833,7 @@ def parse(input_folder="XPT", output="CSV/nhanes_userdata.csv",
                     prepandemic=prepandemic)
     raw = decode_missing(raw, book, log)
     raw = apply_sentinels(raw, log)
+    raw = clean_weights(raw, log)
     if recode:
         raw = recode_binary(raw, book, third_option=True, log=log)
     if layout == "codes":
@@ -1887,6 +2043,14 @@ def main(argv=None):
                              "(default: %(default)s)")
     parser.add_argument("--write-variables", metavar="FILE", default=None,
                         help="write the resolved name -> codes mapping to FILE and exit")
+    parser.add_argument("--weights-dict", dest="weights_dict", metavar="FILE", default=None,
+                        help="where to write the table of which weight column each parsed "
+                             "variable needs (default: nhanes_weights_dict.csv next to the "
+                             "output). It is written together with the parsed data, because the "
+                             "two belong together: the data carries the weights, this says which "
+                             "one each variable needs")
+    parser.add_argument("--no-weights-dict", dest="no_weights_dict", action="store_true",
+                        help="do not write nhanes_weights_dict.csv beside the parsed data")
     parser.add_argument("-l", "--layout", choices=LAYOUTS, default="names",
                         help="'names' - one column per variable name, (topic, name), codes merged "
                              "and derived variables computed, what nhanes_userdata.csv holds and "
@@ -1939,9 +2103,28 @@ def main(argv=None):
                           layout=args.layout, derived=derived, recode=not args.no_recode,
                           merge_ambiguous=args.merge_ambiguous, like=args.like,
                           workers=args.workers, prepandemic=args.prepandemic, log=log)
+        extra = {}
+        if not args.no_weights_dict:
+            folder = os.path.dirname(os.path.abspath(os.path.expanduser(args.output)))
+            path = os.path.expanduser(args.weights_dict) if args.weights_dict else \
+                os.path.join(folder, "nhanes_weights_dict.csv")
+            try:
+                mapping = read_variables(args.variables, log=None)
+                lookup = weights_dict(mapping)
+                # stamp the corner cell, the way a parsed table is stamped, so the
+                # file still says where it came from once it is copied away
+                from datetime import date
+                lookup.index.name = (f"pynhanes {_version()} | weights dict | "
+                                     f"{date.today().isoformat()}")
+                os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+                lookup.to_csv(path, sep=";")
+                log(f"Wrote the weight of {len(lookup)} variables to {path}")
+                extra["weights_dict"] = path
+            except (ValueError, KeyError) as e:
+                log(f"Could not write {path}: {e}")
         if quiet:
             print(json.dumps({"output": args.output, "participants": int(table.shape[0]),
-                              "variables": int(table.shape[1])}, indent=1), flush=True)
+                              "variables": int(table.shape[1]), **extra}, indent=1), flush=True)
         return 0
     except (ValueError, RuntimeError, OSError, KeyError) as e:
         log(f"ERROR: {e}")

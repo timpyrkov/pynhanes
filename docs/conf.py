@@ -75,16 +75,31 @@ SHARED = [("CSV/nhanes_userdata.csv.gz", f"{RELEASE}/nhanes_userdata.csv.gz"),
           ("NPZ/nhanes_steps.npz", f"{RELEASE}/nhanes_steps.npz")]
 
 
+def _fetch(url, target):
+    """Download in a child process, never in this one.
+
+    On macOS urllib asks the system for its proxy settings, which starts
+    CoreFoundation in the process that calls it. Sphinx then forks its parallel
+    workers, and a forked child that touches CoreFoundation again - pyarrow's
+    bundled curl does, as pandas imports it - is killed with a segmentation
+    fault. Keeping the download out of this process keeps CoreFoundation out.
+    """
+    import subprocess
+    import sys
+    subprocess.run([sys.executable, "-c",
+                    "import sys, urllib.request; urllib.request.urlretrieve(*sys.argv[1:])",
+                    url, target + ".part"], check=True)
+    os.replace(target + ".part", target)              # atomic, so no half file
+
+
 def _prefetch():
-    import urllib.request
     for name, url in SHARED:
         target = os.path.join(_into, name)
         if os.path.isfile(target):
             continue
         os.makedirs(os.path.dirname(target), exist_ok=True)
         print(f"conf.py: fetching {name}")
-        urllib.request.urlretrieve(url, target + ".part")
-        os.replace(target + ".part", target)          # atomic, so no half file
+        _fetch(url, target)
     # the codebook the first notebook writes, so that the others never race
     # with it for the same path
     codebook = os.path.join(_into, "CSV", "nhanes_codebook.csv")

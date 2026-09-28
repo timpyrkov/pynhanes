@@ -6,7 +6,7 @@ This page describes every step between the files NHANES publishes and the table
 tell what was done to the numbers. It is meant to be **quoted or paraphrased in a
 Materials and Methods section**; a ready paragraph is at the bottom.
 
-Numbers below come from the codebook shipped with pynhanes 1.0.0, scraped on
+Numbers below come from the codebook shipped with pynhanes 1.0.1, scraped on
 2026-09-23: 12774 variables of 385 data files, surveys 1999-2000 to 2021-2023.
 
 
@@ -70,7 +70,7 @@ some names cover different people: ``Gender`` is both the participant
 (``RIAGENDR``) and the household reference person (``DMDHRGND``); ``Education
 level`` is the adult scale, the children's grades and the reference person's.
 The mapping actually used is a curated file, shipped with the package as
-``pynhanes/data/nhanes_variables.json`` (341 names over 484 variable codes).
+``pynhanes/data/nhanes_variables.json`` (351 names over 498 variable codes).
 
 
 3. Reading the data files
@@ -88,7 +88,19 @@ the participant identifier ``SEQN``, which NHANES keeps unique across surveys.
   hay fever (``AGQ030``) lives in ``MCQ``, ``RDQ`` and ``AGQ`` depending on the
   survey.
 - **Mortality** comes from the newest public-use linked file present, so re-running
-  after a new release changes who counts as deceased.
+  after a new release changes who counts as deceased. The linkage covers
+  1999-2000 to 2017-2018; neither the pre-pandemic release nor 2021-2023 is linked.
+- **Cause of death is the public grouping, not the ICD-10 code.** The public file
+  gives the underlying cause in ten groups (heart disease, cancer, chronic lower
+  respiratory disease, accidents, stroke, Alzheimer's disease, diabetes,
+  influenza and pneumonia, kidney disease, all other causes); the ICD-10 code
+  itself is available only in the restricted-use file. ``Mortality cause
+  diabetes`` and ``Mortality cause hypertension`` are *multiple-cause* flags -
+  the condition is listed anywhere on the death certificate - so they are not
+  the same as an underlying cause of diabetes: 1,057 certificates mention
+  diabetes, 325 give it as the underlying cause. Cause and both flags are blank
+  for survivors, as in the linked file, and the flags keep its 1 = Yes, 0 = No
+  coding.
 
 **The 2017-March 2020 pre-pandemic release is excluded by default.** NHANES could
 not finish the 2019-2020 cycle and published the collected part combined with the
@@ -237,7 +249,8 @@ Some columns are computed rather than copied, and are switched off with
    * - Health care visits, hospital stays
      - later scales folded back to the earlier one before merging
    * - Mortality follow-up
-     - months converted to years
+     - months converted to years, both from the interview and from the
+       examination date
 
 Three columns are added **beside** the ones requested rather than instead of
 them: any health insurance; the blood pressures **without** the 30-minute rule
@@ -275,10 +288,17 @@ missing in the status.
 10. What the processing does not do
 -----------------------------------
 
-- **Survey weights are not combined.** ``WTINT2YR`` and ``WTMEC2YR`` are two-year
-  weights; analysing several surveys together requires dividing them by the number
-  of surveys used. They are copied unchanged, and **no analysis in the examples is
-  weighted**.
+- **Survey weights are not combined.** The parsed table carries five weights
+  (interview, examination, blood draw, fasting, dietary) together with
+  ``SDMVPSU`` and ``SDMVSTRA``, and ``nhanes_weights_dict.csv`` says which weight
+  each variable needs. They are copied unchanged, except that a weight below
+  1e-9 -- how the XPORT format renders the zero weight of somebody outside a
+  subsample -- is set to a true zero. Analysing several surveys together requires
+  dividing the weights by the number of surveys used, and **no analysis in the
+  examples is weighted**. See the Sample weights page.
+- **Accelerometry is not weighted.** ``nhanes_activity.csv`` carries no weight
+  column. Join it to the parsed table on ``SEQN`` and use the examination weight,
+  which is what the published accelerometry analyses use.
 - **Nothing is imputed.** A missing answer stays missing.
 - **Values are not binned.**
 - **Codes are not made comparable across surveys** beyond the cases listed above.
@@ -298,7 +318,7 @@ Data and processing
 
     Data were taken from the public releases of the National Health and
     Nutrition Examination Survey (NHANES, 1999-2023) and processed with pynhanes
-    1.0.0 (https://github.com/timpyrkov/pynhanes), using the variable codebook
+    1.0.1 (https://github.com/timpyrkov/pynhanes), using the variable codebook
     scraped from the NHANES documentation pages on 2026-09-23. Because NHANES
     renames variables between survey cycles, variables were requested by name and
     resolved to NHANES variable codes through that codebook; a name mapping to
@@ -350,7 +370,8 @@ Derived variables
     **Health care visits and hospital stays** were folded onto the scale of the
     earliest cycle before the codes were merged, and participants who answered
     that they had not been in hospital were assigned zero stays. **Mortality
-    follow-up** was converted from months to years. Where a derived variable
+    follow-up**, counted both from the interview and from the examination, was
+    converted from months to years. Where a derived variable
     could not be computed because the variables it needs were absent, the
     published value was left unchanged.
 
@@ -389,6 +410,6 @@ If you used the published tables rather than parsing the files yourself, the
 first cell of the table's header records the version, the layout and whether the
 values are recoded, for example::
 
-    pynhanes 1.0.0 | names | recoded | derived | 2026-09-24
+    pynhanes 1.0.1 | names | recoded | derived | 2026-09-28
 
 Read it back with ``pynhanes.parser.read_provenance(table)``.

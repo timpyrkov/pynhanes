@@ -11,6 +11,8 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+# data assets collected by tools/make_release_asset.py
+release/
 downloads/
 eggs/
 .eggs/
