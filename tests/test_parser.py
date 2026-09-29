@@ -244,6 +244,38 @@ def test_mortality_weight_follows_the_linkage():
     assert table.loc["Mortality event"].drop("1999-2000").isna().all()
 
 
+def test_a_measurement_is_not_a_checkbox():
+    # a range of values is the only label a lab value has, just as "LOW BACK"
+    # is the only label of a checkbox - but only the checkbox means "yes"
+    assert pr._is_flag({"4": "LOW BACK", ".": "Missing"}) is True
+    assert pr._is_flag({"0.113 to 30.302": "Range of Values", ".": "Missing"}) is False
+    assert pr._is_flag({"1 to 18": "Range of Values"}) is False
+
+
+def test_measurements_in_several_codes_keep_their_values():
+    # triglycerides live in three codes; merging them once turned every value
+    # into 1, as if "has a value" meant "yes"
+    data = pd.DataFrame({"LBDTRSI": [0.9, np.nan, np.nan],
+                         "LBDSTRSI": [1.4, 2.7, np.nan]}, index=[1, 2, 3])
+    codebook = pd.DataFrame(
+        {"Codebook": [{"0.113 to 30.302": "Range of Values", ".": "Missing"},
+                      {"0.135 to 28.778": "Range of Values", ".": "Missing"}],
+         "Type": ["Continuous", "Continuous"]}, index=["LBDTRSI", "LBDSTRSI"])
+    merged = pr.merge_codes(data, {"Triglycerides": ["LBDTRSI", "LBDSTRSI"]},
+                            log=lambda *a: None, codebook=codebook)
+    assert merged["Triglycerides"].tolist()[:2] == [0.9, 2.7]
+    assert np.isnan(merged["Triglycerides"].iloc[2])
+
+
+def test_a_continuous_variable_is_never_merged_as_yes_no():
+    # the codebook's own type is a second guard, whatever the labels say
+    data = pd.DataFrame({"A": [0.0, 1.0], "B": [1.0, 0.0]}, index=[1, 2])
+    codebook = pd.DataFrame({"Codebook": [{"0": "No", "1": "Yes"}, {"0": "No", "1": "Yes"}],
+                             "Type": ["Continuous", "Continuous"]}, index=["A", "B"])
+    merged = pr.merge_codes(data, {"X": ["A", "B"]}, log=lambda *a: None, codebook=codebook)
+    assert merged["X"].tolist() == [0.0, 1.0]            # first code wins, not "any yes"
+
+
 # ---------------------------------------------------------------------------
 # decoding and recoding
 # ---------------------------------------------------------------------------

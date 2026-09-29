@@ -255,7 +255,7 @@ empty - carries a provenance line, so a table that has been copied away from its
 what it holds:
 
 ```
-pynhanes 1.0.1 | names | recoded | derived | 2026-09-28;Demographic;Demographic
+pynhanes 1.0.2 | names | recoded | derived | 2026-09-29;Demographic;Demographic
 ;Age;Gender
 SEQN;;
 ```

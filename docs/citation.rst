@@ -6,7 +6,7 @@ This page describes every step between the files NHANES publishes and the table
 tell what was done to the numbers. It is meant to be **quoted or paraphrased in a
 Materials and Methods section**; a ready paragraph is at the bottom.
 
-Numbers below come from the codebook shipped with pynhanes 1.0.1, scraped on
+Numbers below come from the codebook shipped with pynhanes 1.0.2, scraped on
 2026-09-23: 12774 variables of 385 data files, surveys 1999-2000 to 2021-2023.
 
 
@@ -87,6 +87,11 @@ the participant identifier ``SEQN``, which NHANES keeps unique across surveys.
 - **A variable stored in several data files is merged rather than dropped** -
   hay fever (``AGQ030``) lives in ``MCQ``, ``RDQ`` and ``AGQ`` depending on the
   survey.
+- **Ethnicity is the five-group ``RIDRETH1`` in every survey.** It exists in all
+  twelve, so the first code always wins and the column means the same thing
+  throughout. The price is that non-Hispanic Asian participants, split out by
+  ``RIDRETH3`` from 2011-2012 on, stay inside "Other race". To study them, parse
+  ``RIDRETH3`` under a name of its own.
 - **Mortality** comes from the newest public-use linked file present, so re-running
   after a new release changes who counts as deceased. The linkage covers
   1999-2000 to 2017-2018; neither the pre-pandemic release nor 2021-2023 is linked.
@@ -215,7 +220,11 @@ names of their own rather than extending the old column.
 --------------------
 
 Some columns are computed rather than copied, and are switched off with
-``--no-derived``:
+``--no-derived``. Their values no longer follow the labels NHANES gives the
+first code they are built from - ``Smoking status`` is built on ``SMQ020``,
+whose labels are only No and Yes, yet takes 0, 1 and 2. Read the labels of a
+pynhanes column from ``pynhanes.loader.CodeBook().dict[name]``, which knows the
+derived ones, rather than from the raw codebook:
 
 .. list-table::
    :header-rows: 1
@@ -318,7 +327,7 @@ Data and processing
 
     Data were taken from the public releases of the National Health and
     Nutrition Examination Survey (NHANES, 1999-2023) and processed with pynhanes
-    1.0.1 (https://github.com/timpyrkov/pynhanes), using the variable codebook
+    1.0.2 (https://github.com/timpyrkov/pynhanes), using the variable codebook
     scraped from the NHANES documentation pages on 2026-09-23. Because NHANES
     renames variables between survey cycles, variables were requested by name and
     resolved to NHANES variable codes through that codebook; a name mapping to
@@ -410,6 +419,6 @@ If you used the published tables rather than parsing the files yourself, the
 first cell of the table's header records the version, the layout and whether the
 values are recoded, for example::
 
-    pynhanes 1.0.1 | names | recoded | derived | 2026-09-28
+    pynhanes 1.0.2 | names | recoded | derived | 2026-09-29
 
 Read it back with ``pynhanes.parser.read_provenance(table)``.

@@ -1029,9 +1029,15 @@ def _is_flag(book):
     ARQ020D are "upper back", "mid back" and "low back", coded 2, 3 and 4 -
     the value names the box, and having a value means yes.
 
+    A measurement has a single label too - "0.113 to 30.302": "Range of
+    Values" - but it is a range, not a box, and must keep its values.
+
     """
     labels = {code: " ".join(str(label).split()) for code, label in book.items()
               if code != "." and " ".join(str(label).split()).lower() not in MISSING_LABELS}
+    if any(" to " in str(code) or text.lower() == "range of values"
+           for code, text in labels.items()):
+        return False
     return len({t.lower() for t in labels.values()}) == 1 and len(labels) >= 1
 
 
@@ -1096,13 +1102,17 @@ def merge_codes(data, mapping, log=print, codebook=None):
 
     """
     books = codebook["Codebook"].to_dict() if codebook is not None else {}
+    # a variable the codebook calls Continuous is a measurement, never Yes/No
+    types = codebook["Type"].to_dict() if codebook is not None and "Type" in codebook else {}
     columns, missing, any_yes = {}, [], []
     for name, codes in mapping.items():
         present = [c for c in codes if c in data.columns]
         if not present:
             missing.append(name)
             continue
-        yes_no = _all_yes_no(data, present, books) if len(present) > 1 and books else None
+        measured = any(types.get(c) == "Continuous" for c in present)
+        yes_no = _all_yes_no(data, present, books) \
+            if len(present) > 1 and books and not measured else None
         if yes_no is not None:
             merged = pd.concat(yes_no, axis=1).max(axis=1, skipna=True)
             any_yes.append(name)
